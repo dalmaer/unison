@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -27,6 +28,32 @@ type testEnv struct {
 	t   *testing.T
 	url string
 	st  *store.Store
+	ts  *httptest.Server
+	// outage, when set, answers every new request in the server's place:
+	// see (*testEnv).down.
+	outage atomic.Pointer[http.HandlerFunc]
+}
+
+// down makes the server answer every new request with fail (and up, the
+// function it returns, ends that), as a restarting server or the gateway
+// in front of it would. Requests already being served are not touched;
+// e.ts.CloseClientConnections() cuts those.
+func (e *testEnv) down(fail http.HandlerFunc) (up func()) {
+	e.outage.Store(&fail)
+	return func() { e.outage.Store(nil) }
+}
+
+// noAnswer cuts the connection without a response.
+func noAnswer(w http.ResponseWriter, r *http.Request) {
+	conn, _, err := w.(http.Hijacker).Hijack()
+	if err == nil {
+		conn.Close()
+	}
+}
+
+// emptyStatus answers with a bare status, as a gateway does.
+func emptyStatus(code int) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(code) }
 }
 
 func newTestEnv(t *testing.T) *testEnv {
@@ -38,13 +65,21 @@ func newTestEnv(t *testing.T) *testEnv {
 	t.Cleanup(func() { st.Close() })
 	srv := server.New(st, nil)
 	srv.SetAuth(server.AuthConfig{DeviceInterval: time.Second})
-	ts := httptest.NewServer(srv)
+	e := &testEnv{t: t, st: st}
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if fail := e.outage.Load(); fail != nil {
+			(*fail)(w, r)
+			return
+		}
+		srv.ServeHTTP(w, r)
+	}))
 	t.Cleanup(ts.Close)
 	for _, k := range []string{"UNISON_SERVER", "UNISON_WORKSPACE", "UNISON_TOKEN", "UNISON_CONFIG"} {
 		t.Setenv(k, "")
 	}
 	t.Setenv("UNISON_CREDENTIALS", filepath.Join(t.TempDir(), "credentials.json"))
-	return &testEnv{t: t, url: ts.URL, st: st}
+	e.url, e.ts = ts.URL, ts
+	return e
 }
 
 // login signs the CLI in (`unison login`) as a new account named name, with

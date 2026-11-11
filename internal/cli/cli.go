@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math/rand/v2"
 	"net/http"
 	"net/url"
 	"os"
@@ -228,7 +229,8 @@ Real time:
                                      --mentions wakes only for @mentions,
                                      replies to your threads, open --action
                                      requests, your items, new open items, and
-                                     webhook deliveries
+                                     webhook deliveries. Rides out server
+                                     restarts; exit 2 when --timeout passes
   peek [--mentions]                  would wait wake right now? Prints true
                                      (exit 0) or false (exit 2) without waiting
                                      or changing anything: wait's place, what
@@ -247,6 +249,7 @@ Environment: UNISON_SERVER, UNISON_WORKSPACE, UNISON_TOKEN, UNISON_CONFIG,
 
 type app struct {
 	out     io.Writer
+	errOut  io.Writer // progress and warnings; never the result
 	cfg     *Config
 	jsonOut bool
 	server  string
@@ -257,7 +260,7 @@ type app struct {
 // Run executes the unison command with args (excluding the program name)
 // and returns the process exit code.
 func Run(args []string, stdout, stderr io.Writer) int {
-	err := run(args, stdout)
+	err := run(args, stdout, stderr)
 	if err == nil {
 		return 0
 	}
@@ -280,8 +283,8 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	return 1
 }
 
-func run(args []string, stdout io.Writer) error {
-	a := &app{out: stdout}
+func run(args []string, stdout, stderr io.Writer) error {
+	a := &app{out: stdout, errOut: stderr}
 	var configPath string
 	args, err := extractGlobals(args, map[string]*string{
 		"server": &a.server, "workspace": &a.ws, "token": &a.token, "config": &configPath,
@@ -2388,13 +2391,18 @@ func (a *app) wait(args []string) error {
 		return err
 	}
 	c := a.client()
-	if err := c.do("GET", path, nil, &me); err != nil {
+	// A server that is restarting, or a network that blinks, is waited out
+	// (#317): every read below is retried until --timeout, here and in the
+	// loop, so a parked agent survives a deploy.
+	deadline := time.Now().Add(time.Duration(*timeout) * time.Second)
+	out := &outage{deadline: deadline, log: a.errOut}
+	if err := out.ride(func() error { return c.do("GET", path, nil, &me) }); err != nil {
 		return err
 	}
 	var readState struct {
 		UpTo int64 `json:"up_to"`
 	}
-	if err := c.do("GET", "/api/workspaces/"+a.ws+"/read", nil, &readState); err != nil {
+	if err := out.ride(func() error { return c.do("GET", "/api/workspaces/"+a.ws+"/read", nil, &readState) }); err != nil {
 		return err
 	}
 	cursor := a.cfg.Cursor
@@ -2402,17 +2410,16 @@ func (a *app) wait(args []string) error {
 		var resp struct {
 			Cursor int64 `json:"cursor"`
 		}
-		if err := c.do("GET", "/api/workspaces/"+a.ws+"/events", nil, &resp); err != nil {
+		if err := out.ride(func() error { return c.do("GET", "/api/workspaces/"+a.ws+"/events", nil, &resp) }); err != nil {
 			return err
 		}
 		cursor = resp.Cursor
 	}
 	f := newEventFilter(c, a.ws, &me, *mentions, readState.UpTo)
-	unread, err := f.unreadMessageEvents()
-	if err != nil {
+	var unread []store.Event
+	if err := out.ride(func() (err error) { unread, err = f.unreadMessageEvents(); return err }); err != nil {
 		return err
 	}
-	deadline := time.Now().Add(time.Duration(*timeout) * time.Second)
 	for {
 		remaining := int(time.Until(deadline).Seconds())
 		if remaining <= 0 && len(unread) == 0 {
@@ -2426,8 +2433,9 @@ func (a *app) wait(args []string) error {
 			Events []store.Event `json:"events"`
 			Cursor int64         `json:"cursor"`
 		}
+		// A failed poll asks again from the same cursor: nothing is skipped.
 		q := fmt.Sprintf("/api/workspaces/%s/events?after=%d&wait=%d", a.ws, cursor, waitSec)
-		if err := c.do("GET", q, nil, &resp); err != nil {
+		if err := out.ride(func() error { return c.do("GET", q, nil, &resp) }); err != nil {
 			return err
 		}
 		var relevant []store.Event
@@ -2469,6 +2477,77 @@ func (a *app) wait(args []string) error {
 			return nil
 		}
 	}
+}
+
+// Wait's retries back off from waitBackoffBase, doubling up to
+// waitBackoffMax, each stretched or shrunk by up to a quarter so that agents
+// parked on the same server don't all come back at once.
+var (
+	waitBackoffBase = 250 * time.Millisecond
+	waitBackoffMax  = 5 * time.Second
+)
+
+// outage rides out a server that can't be reached for a while (#317): a
+// deploy, a restart, a network blip. It retries what fails for that reason,
+// and only that, until the deadline.
+type outage struct {
+	deadline time.Time
+	log      io.Writer
+	streak   int // failures in a row; a success resets it
+}
+
+// transient says whether err is the kind an outage is made of: no answer
+// at all, or a gateway answering for a server that isn't there (502, 503,
+// 504). The server's own refusals (401, 403, 404, 500) are final.
+func transient(err error) bool {
+	var te *transportError
+	if errors.As(err, &te) {
+		return true
+	}
+	var ae *apiError
+	return errors.As(err, &ae) && (ae.Status == http.StatusBadGateway || ae.Status == http.StatusServiceUnavailable || ae.Status == http.StatusGatewayTimeout)
+}
+
+// ride runs try until it succeeds, fails for good, or the deadline passes
+// while the server is away (exit code 2, as when nothing arrived: run wait
+// again). It says one line on stderr for each retry.
+func (o *outage) ride(try func() error) error {
+	for {
+		err := try()
+		if err == nil {
+			o.streak = 0
+			return nil
+		}
+		if !transient(err) {
+			return err
+		}
+		left := time.Until(o.deadline)
+		if left <= 0 {
+			return &exitError{code: 2, msg: fmt.Sprintf("Nothing new: the server could not be reached (%s). Run `unison wait` again to keep listening.", cause(err))}
+		}
+		pause := min(waitBackoffBase<<min(o.streak, 16), waitBackoffMax)
+		pause = time.Duration(float64(pause) * (0.75 + rand.Float64()/2))
+		pause = min(pause, left)
+		o.streak++
+		if o.log != nil {
+			fmt.Fprintf(o.log, "unison wait: %s; retrying in %s\n", cause(err), pause.Round(10*time.Millisecond))
+		}
+		time.Sleep(pause)
+	}
+}
+
+// cause is a transient error in a few words: the status, or what the
+// network said, without the URL and the advice around it.
+func cause(err error) string {
+	var ae *apiError
+	if errors.As(err, &ae) {
+		return fmt.Sprintf("HTTP %d %s", ae.Status, http.StatusText(ae.Status))
+	}
+	var ue *url.Error
+	if errors.As(err, &ue) {
+		err = ue.Err
+	}
+	return "server unreachable: " + err.Error()
 }
 
 // eventFilter is wait's concern.Filter, with the chat lookups it needs.
