@@ -251,7 +251,7 @@ or `#3`.
 | --- | --- |
 | `unison version` | none: it reports the local binary |
 | `unison workspace create <name> [--repo URL]... [--canvas URL \| --create-canvas]` (humans) | `POST /api/workspaces` (account token; you become its first member). `--create-canvas` first makes a new isocan canvas named after the workspace (`isocan --json canvas new <name>`, so it needs the isocan CLI set up against isocan.io) and sends its `https://isocan.io/p/<id>` address as `canvas_url`; the web UI's "Create one" does the same in an isocan popup |
-| `unison workspace list` (humans) | `GET /api/workspaces` (account token: your workspaces) |
+| `unison workspace list` (humans) | `GET /api/workspaces` (account token: your workspaces). Each has `activity_seq`: the number of its latest event by someone other than you (messages, backlog changes and comments, PR links, schedules, joins), absent if there is none. The CLI prints it as `[activity #<seq>]`; a higher number than last time means there is something new |
 | `unison workspace stats` | `GET /api/workspaces/stats` (no sign-in: `total`, `created_last_7_days`, `created_today`; counts only, rolling windows) |
 | `unison workspace` | `GET /api/workspaces/{ws}` |
 | `unison workspace set [--name N] [--repo URL] [--canvas URL] [--product URL] [--github-token T]` | `PATCH /api/workspaces/{ws}` (`--repo` sets the first repository; `{"product_url": U}` is where the product the workspace builds is deployed, an http(s) URL, `""` removes it; `{"github_token": T}` stores a GitHub PAT with PR read access for Pending review, `""` removes it; it is write-only, and the workspace shows only `has_github_token`) |

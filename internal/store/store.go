@@ -72,6 +72,10 @@ type Workspace struct {
 	// HasGitHubToken says whether a GitHub token is set (#127). The token
 	// itself is never serialized: read it with GitHubToken.
 	HasGitHubToken bool `json:"has_github_token"`
+	// ActivitySeq is the seq of the workspace's latest collaboration event
+	// by someone other than the caller (#300, see CollaborationTypes); 0
+	// if there is none. Filled in for workspace lists only.
+	ActivitySeq int64 `json:"activity_seq,omitempty"`
 }
 
 // Participant is a registered human or agent. Unison makes no distinction
@@ -336,15 +340,16 @@ func (s *Store) createWorkspace(ctx context.Context, creatorID int64, name, repo
 	return w, evs, nil
 }
 
-// ListWorkspaces returns all workspaces, newest first.
+// ListWorkspaces returns all workspaces, newest first. Each one's
+// ActivitySeq counts everybody's activity: there is no caller to leave out.
 func (s *Store) ListWorkspaces(ctx context.Context) ([]Workspace, error) {
-	return s.listWorkspaces(ctx, `SELECT `+workspaceCols+` FROM workspaces ORDER BY created_at DESC`)
+	return s.listWorkspaces(ctx, 0, `SELECT `+workspaceCols+` FROM workspaces ORDER BY created_at DESC`)
 }
 
 // ListWorkspacesFor returns the workspaces userID is a member of, newest
-// first.
+// first. Each one's ActivitySeq leaves out what userID did themselves.
 func (s *Store) ListWorkspacesFor(ctx context.Context, userID int64) ([]Workspace, error) {
-	return s.listWorkspaces(ctx, `SELECT `+workspaceCols+` FROM workspaces
+	return s.listWorkspaces(ctx, userID, `SELECT `+workspaceCols+` FROM workspaces
 		WHERE id IN (SELECT workspace_id FROM memberships WHERE user_id = ?) ORDER BY created_at DESC`, userID)
 }
 
@@ -372,7 +377,9 @@ func (s *Store) WorkspaceStats(ctx context.Context) (WorkspaceStats, error) {
 	return st, err
 }
 
-func (s *Store) listWorkspaces(ctx context.Context, q string, args ...any) ([]Workspace, error) {
+// listWorkspaces runs q and fills in each workspace's repositories and its
+// ActivitySeq as userID sees it (0: nobody's activity is left out).
+func (s *Store) listWorkspaces(ctx context.Context, userID int64, q string, args ...any) ([]Workspace, error) {
 	rows, err := s.db.QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, err
@@ -393,11 +400,57 @@ func (s *Store) listWorkspaces(ctx context.Context, q string, args ...any) ([]Wo
 	if err := s.attachRepos(ctx, list); err != nil {
 		return nil, err
 	}
+	if err := s.attachActivity(ctx, list, userID); err != nil {
+		return nil, err
+	}
 	out := make([]Workspace, 0, len(list))
 	for _, w := range list {
 		out = append(out, *w)
 	}
 	return out, nil
+}
+
+// CollaborationTypes are the events that count as collaboration in a
+// workspace (#300): chat messages, changes to the backlog and comments on
+// it, pull request links, schedule changes, and people joining or being
+// removed. Another workspace's switcher entry is marked when one of these
+// happens there. Left out as noise: status and name changes
+// (participant.updated), reactions and message.done/undone, lease renewals
+// and expiries, agents logged out for idling, and settings (repos, links,
+// webhooks, invites).
+var CollaborationTypes = []string{
+	"message.created",
+	"backlog.added", "backlog.updated", "backlog.moved", "backlog.deleted",
+	"backlog.assigned", "backlog.unassigned", "backlog.started", "backlog.stopped", "backlog.released",
+	"backlog.closed", "backlog.reopened",
+	"comment.added",
+	"pr.linked", "pr.unlinked",
+	"schedule.added", "schedule.updated", "schedule.removed",
+	"participant.joined", "participant.revoked", "member.removed",
+}
+
+// attachActivity sets each workspace's ActivitySeq: the seq of its latest
+// collaboration event that userID's own participant there did not make.
+// What the user's agents do counts: they are teammates to hear from.
+// Events with no actor (the server's own) count too.
+func (s *Store) attachActivity(ctx context.Context, list []*Workspace, userID int64) error {
+	marks := strings.TrimSuffix(strings.Repeat("?, ", len(CollaborationTypes)), ", ")
+	// Newest first on the (workspace_id, seq) index, stopping at the first
+	// event that qualifies.
+	q := `SELECT seq FROM events WHERE workspace_id = ? AND type IN (` + marks + `)
+		AND (actor_id IS NULL OR actor_id NOT IN (SELECT id FROM participants WHERE workspace_id = ? AND user_id = ?))
+		ORDER BY seq DESC LIMIT 1`
+	for _, w := range list {
+		args := []any{w.ID}
+		for _, t := range CollaborationTypes {
+			args = append(args, t)
+		}
+		args = append(args, w.ID, userID)
+		if err := s.db.QueryRowContext(ctx, q, args...).Scan(&w.ActivitySeq); err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+	}
+	return nil
 }
 
 // GetWorkspace returns a workspace by ID, with its repositories.

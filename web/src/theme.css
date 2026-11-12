@@ -1382,6 +1382,20 @@ button.nav-link {
   white-space: nowrap;
 }
 
+/* Something new in another workspace (#300): on the control, and on that
+   workspace in the menu, where it sits at the row's far end. */
+.switcher-activity {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: var(--radius-full);
+  background: var(--accent);
+}
+
+.switcher-item > .switcher-activity {
+  margin: 0 var(--space-xxs) 0 auto;
+}
+
 .switcher-menu.popover {
   width: 300px;
   padding: var(--space-xxs);
