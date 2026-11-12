@@ -1,6 +1,7 @@
 import { useState } from "react";
 import Button from "./ui/Button.jsx";
 import Dialog from "./ui/Dialog.jsx";
+import EmojiPicker from "./ui/EmojiPicker.jsx";
 import Field from "./ui/Field.jsx";
 import { Input } from "./ui/Input.jsx";
 
@@ -51,9 +52,7 @@ export default function MeDialog({ me, call, onSaved, onClose }) {
           <Field label="Name">
             <Input required data-autofocus pattern="[^\s@]+" title="One word, without @" autoComplete="off" {...field("name")} />
           </Field>
-          <Field label="Emoji">
-            <Input required autoComplete="off" {...field("emoji")} />
-          </Field>
+          <EmojiPicker label="Emoji" required value={form.emoji} onChange={(emoji) => setForm({ ...form, emoji })} />
         </div>
         <p className="field-description">One word, without @: it is how people mention you. Earlier mentions keep the name they were written with.</p>
         <Field label="Status (optional)">

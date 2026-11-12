@@ -544,6 +544,91 @@ textarea.control {
   font-weight: var(--weight-ui-semibold);
 }
 
+/* ---- EmojiPicker (ui/EmojiPicker.jsx, #305): an emoji text field with a
+   button that opens a searchable grid. The panel is position: fixed (and in
+   the top layer where the Popover API exists), placed by the component. ---- */
+.emoji-picker {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+/* Room for the button inside the field's right edge. */
+.emoji-picker > .emoji-input {
+  padding-right: calc(28px + var(--space-xxs));
+}
+
+.emoji-picker > .emoji-trigger {
+  position: absolute;
+  right: 2px;
+}
+
+.popover.emoji-panel {
+  position: fixed;
+  inset: auto;
+  z-index: 20;
+  margin: 0;
+  border: 0;
+  padding: var(--space-xs);
+  gap: var(--space-xs);
+  color: var(--text);
+  overflow: hidden;
+}
+
+.emoji-groups {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  min-height: 0;
+  /* The focus ring of an emoji at the edge isn't cut off by the scroller. */
+  margin: calc(-1 * var(--space-xxs));
+  padding: var(--space-xxs);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.emoji-group-title {
+  margin: 0 0 var(--space-xxs);
+  color: var(--text-muted);
+  font-size: var(--size-xxs);
+  line-height: var(--line-xxs);
+  font-weight: var(--weight-ui-semibold);
+}
+
+.emoji-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(36px, 1fr));
+  gap: 2px;
+}
+
+.emoji-option {
+  display: grid;
+  place-items: center;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-s);
+  background: transparent;
+  font: inherit;
+  font-size: var(--size-l);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.emoji-option:hover {
+  background: var(--surface-hover);
+}
+
+.emoji-option[aria-current="true"] {
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 var(--border-s) var(--border-strong);
+}
+
+.emoji-option:focus-visible {
+  outline: var(--focus-ring-outline);
+  outline-offset: -2px;
+}
+
 /* ---- Dialog (ui/Dialog.jsx): a floating panel; a full-screen sheet on
    phones ---- */
 .dialog {
