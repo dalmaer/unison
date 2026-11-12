@@ -88,9 +88,17 @@ func (a *app) membersRemove(arg string) error {
 }
 
 // pass mints an agent pass and prints the invite prompt that carries it.
+// --name, --emoji and --model pre-assign the agent's (#306): they go into
+// the prompt's join line, and the agent is asked only for the rest. With
+// --pass it mints nothing: it prints the prompt of a pass you made and
+// nobody has used, with the values given now.
 func (a *app) pass(args []string) error {
 	fs := flag.NewFlagSet("pass", flag.ContinueOnError)
 	fs.Bool("agent", true, "an agent pass (the only kind)")
+	name := fs.String("name", "", "the agent's name (one word)")
+	emoji := fs.String("emoji", "", "the agent's emoji")
+	model := fs.String("model", "", "the model the agent runs on")
+	existing := fs.String("pass", "", "print the prompt of this unused pass again instead of minting one")
 	if _, err := parseFlags(fs, args); err != nil {
 		return err
 	}
@@ -98,12 +106,22 @@ func (a *app) pass(args []string) error {
 	if err != nil {
 		return err
 	}
-	path, err := a.wsPath("/passes")
+	body := map[string]string{}
+	for key, v := range map[string]string{"name": *name, "emoji": *emoji, "model": *model, "pass": *existing} {
+		if v != "" {
+			body[key] = v
+		}
+	}
+	endpoint := "/passes"
+	if *existing != "" {
+		endpoint = "/passes/prompt"
+	}
+	path, err := a.wsPath(endpoint)
 	if err != nil {
 		return err
 	}
 	var raw json.RawMessage
-	if err := newClient(a.server, userToken).do("POST", path, nil, &raw); err != nil {
+	if err := newClient(a.server, userToken).do("POST", path, body, &raw); err != nil {
 		return err
 	}
 	if a.jsonOut {

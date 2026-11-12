@@ -137,6 +137,7 @@ func (s *Server) routes() {
 	h("GET "+ws+"/me", s.auth(s.me))
 	h("PATCH "+ws+"/me", s.auth(s.updateMe))
 	h("POST "+ws+"/passes", s.requireUser(s.mintPass))
+	h("POST "+ws+"/passes/prompt", s.requireUser(s.passPrompt))
 	h("GET "+ws+"/members", s.listMembers)
 	h("DELETE "+ws+"/members/{user}", s.requireUser(s.removeMember))
 	h("GET "+ws+"/invites", s.listInvites)
