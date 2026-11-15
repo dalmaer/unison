@@ -74,7 +74,9 @@ Server:
 
 Workspaces & identity:
   workspace [show]                   show the current workspace
-  workspace list                     your workspaces (needs login)
+  workspace list                     your workspaces (needs login); [activity #N]
+                                     marks one where somebody else has been busy:
+                                     N grows with each thing they do
   workspace stats                    how many workspaces this server has, and how
                                      many are new (counts only; no login needed)
   workspace create <name> [--repo URL]... [--canvas URL | --create-canvas]
@@ -611,7 +613,13 @@ func (a *app) workspace(args []string) error {
 			if len(ws.Repos) > 1 {
 				repos += fmt.Sprintf(" (+%d more)", len(ws.Repos)-1)
 			}
-			a.printf("%s  %s  %s\n", ws.ID, ws.Name, repos)
+			// What teammates have done there, as an event number to compare
+			// with last time (#300); nothing when nobody else has been busy.
+			activity := ""
+			if ws.ActivitySeq > 0 {
+				activity = fmt.Sprintf("  [activity #%d]", ws.ActivitySeq)
+			}
+			a.printf("%s  %s  %s%s\n", ws.ID, ws.Name, repos, activity)
 		}
 		return nil
 	case "stats":

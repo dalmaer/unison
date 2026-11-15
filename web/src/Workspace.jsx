@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowUpRight, Bot, ChevronDown, FolderGit2, Globe, KeyRound, LayoutGrid, Link2, ListTodo, MessageCircle, Pencil, Plus, RefreshCw, Repeat, Settings, UserPlus } from "lucide-react";
 import { ApiError, getToken, setToken, workspaceApi } from "./api.js";
 import { AccountMenu } from "./Account.jsx";
+import { markSeen } from "./activity.js";
 import Backlog from "./Backlog.jsx";
 import Chat from "./Chat.jsx";
 import { GatePage, JoinForm } from "./Gate.jsx";
@@ -268,6 +269,8 @@ export default function Workspace({ id, view, navigate, account }) {
     src.onerror = () => setLive(false);
     src.onmessage = (msg) => {
       const event = JSON.parse(msg.data);
+      // You are here to see it: the switcher needn't mark this workspace (#300).
+      markSeen(account.user?.id, id, event.seq);
       notify(event);
       applyMessageEvent(event);
       applyItemEvent(event);
