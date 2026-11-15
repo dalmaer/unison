@@ -7,6 +7,7 @@ import { createCanvas } from "./isocan.js";
 import Button from "./ui/Button.jsx";
 import Checkbox from "./ui/Checkbox.jsx";
 import Dialog from "./ui/Dialog.jsx";
+import EmojiPicker from "./ui/EmojiPicker.jsx";
 import Field from "./ui/Field.jsx";
 import { Input } from "./ui/Input.jsx";
 
@@ -272,9 +273,7 @@ function NewWorkspaceDialog({ account, navigate, onClose }) {
           <Field label="Your name in it">
             <Input placeholder="one word" {...field("me")} />
           </Field>
-          <Field label="Emoji">
-            <Input placeholder="🦊" {...field("emoji")} />
-          </Field>
+          <EmojiPicker label="Emoji" placeholder="🦊" value={form.emoji} onChange={(emoji) => setForm({ ...form, emoji })} />
         </div>
         <p className="field-description">You join it right away; leave either blank to be assigned one.</p>
         <div className="actions-row dialog-actions">
