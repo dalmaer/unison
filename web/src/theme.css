@@ -2344,17 +2344,19 @@ html.resizing * {
   white-space: nowrap;
 }
 
-/* A message's actions (reply, reactions) float over its top-right corner
-   on hover or focus; on touch screens the "…" button shows them. */
+/* A message's actions (reply, reactions) sit in the empty right side of its
+   author/timestamp header line so they never cover message body text (#323);
+   on touch screens the "…" button shows them. */
 .msg-actions {
   position: absolute;
-  top: -6px;
+  top: 5px;
   right: var(--space-s);
   z-index: 1;
   display: none;
   align-items: center;
   gap: 2px;
-  padding: 2px;
+  height: 20px;
+  padding: 1px;
   border-radius: var(--radius-s);
   background: var(--panel);
   box-shadow: 0 0 0 var(--border-s) var(--panel-edge), var(--panel-shadow);
@@ -2367,21 +2369,27 @@ html.resizing * {
   display: inline-flex;
 }
 
+/* Hide hover toolbars while actively pressing/selecting message text (#323). */
+.msg:active:not(:has(.msg-actions:active)) > .msg-actions {
+  display: none;
+}
+
 .msg-action.button {
-  height: 26px;
-  padding: 0 6px;
+  height: 18px;
+  padding: 0 5px;
+  font-size: var(--size-xxs);
 }
 
 .msg-emoji {
   display: grid;
   place-items: center;
-  width: 28px;
-  height: 26px;
+  width: 22px;
+  height: 18px;
   padding: 0;
   border: 0;
   border-radius: var(--radius-s);
   background: none;
-  font-size: 15px;
+  font-size: 13px;
   line-height: 1;
   cursor: pointer;
 }
@@ -2503,6 +2511,11 @@ html.resizing * {
 
 .thread-replies .msg:hover {
   background: none;
+}
+
+.thread-replies .msg > .msg-actions {
+  top: 1px;
+  right: 0;
 }
 
 .composer {
