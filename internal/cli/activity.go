@@ -46,12 +46,14 @@ func (a *app) activity(args []string) error {
 
 func describeActivity(people map[int64]store.Participant, e store.Event) string {
 	who := label(people, e.ActorID)
-	if e.ActorID == 0 && e.Type == "backlog.added" {
+	if e.ActorID == 0 && (e.Type == "backlog.added" || e.Type == "comment.added") {
 		who = "🔁 Recurring task"
 	}
 	switch {
 	case strings.HasPrefix(e.Type, "backlog."):
 		return describeBacklogActivity(people, who, e)
+	case e.Type == "comment.added":
+		return describeCommentActivity(who, e)
 	case e.Type == "participant.joined":
 		return describeParticipantJoined(e)
 	case e.Type == "member.removed":
@@ -59,6 +61,15 @@ func describeActivity(people map[int64]store.Participant, e store.Event) string 
 	default:
 		return fmt.Sprintf("%s by %s", e.Type, who)
 	}
+}
+
+func describeCommentActivity(who string, e store.Event) string {
+	var ce store.CommentEvent
+	json.Unmarshal(e.Data, &ce)
+	if ce.Item == nil {
+		return fmt.Sprintf("💬 %s commented", who)
+	}
+	return fmt.Sprintf("💬 %s commented on #%d %q", who, ce.Item.ID, ce.Item.Title)
 }
 
 func describeBacklogActivity(people map[int64]store.Participant, who string, e store.Event) string {

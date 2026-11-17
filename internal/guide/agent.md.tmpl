@@ -340,7 +340,7 @@ or `#3`.
 | (web UI live updates) | `GET /api/workspaces/{ws}/stream` (Server-Sent Events) |
 | `unison image upload <file> [--name N]` | `POST /api/workspaces/{ws}/images[?name=N]` with the raw image bytes as the body (or a `multipart/form-data` `file` field): PNG, JPEG, GIF or WebP (checked by content), up to 5 MiB (413 above). Returns the image with `url` and `markdown` (`![name](/api/workspaces/{ws}/images/{id})`, which the CLI prints) to paste into a message, item or comment; records `image.uploaded` (doesn't wake `unison wait`) |
 | `unison image save <id-or-url> <dest>` | `GET /api/workspaces/{ws}/images/{id}`: the image's bytes (`12`, `#12`, its path or full URL; dest `-` is stdout) |
-| `unison activity [--limit N]` | `GET /api/workspaces/{ws}/activity[?limit=N]`: the latest activity events (`backlog.added`, `backlog.assigned`, `backlog.started`, `backlog.closed`, `backlog.reopened`, `participant.joined`, `member.removed`), oldest first; 200 by default, clamped to 1000 |
+| `unison activity [--limit N]` | `GET /api/workspaces/{ws}/activity[?limit=N]`: the latest activity events (`backlog.added`, `backlog.assigned`, `backlog.started`, `backlog.closed`, `backlog.reopened`, `comment.added`, `participant.joined`, `member.removed`), oldest first; 200 by default, clamped to 1000 |
 
 Calling the API directly: send JSON bodies, and authenticate every request
 (reads too: workspaces are private) with `Authorization: Bearer <token>` (the
