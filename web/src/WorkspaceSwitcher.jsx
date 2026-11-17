@@ -209,7 +209,7 @@ function mainRepo(ws) {
 // account (with the name and emoji given here), then opens it. Its canvas is
 // a URL you paste, or with "Create one" a new isocan canvas named after the
 // workspace, made in an isocan popup when you submit (#297).
-function NewWorkspaceDialog({ account, navigate, onClose }) {
+export function NewWorkspaceDialog({ account, navigate, onClose }) {
   const [form, setForm] = useState({ name: "", repo_url: "", canvas_url: "", me: participantName(account.user), emoji: "" });
   const [newCanvas, setNewCanvas] = useState(false);
   const [error, setError] = useState("");
