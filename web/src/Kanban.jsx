@@ -190,7 +190,7 @@ function KanbanCard({ item, list, highlight, participants, me, repos, run, reord
       <div className="kcard-foot">
         <span className="kcard-people">
           <span className="kcard-reporter" title="Added by">
-            {name(participants, item.created_by)}
+            by {name(participants, item.created_by)}
           </span>
           {item.assignee_id && <span className="chip">{name(participants, item.assignee_id)}</span>}
         </span>

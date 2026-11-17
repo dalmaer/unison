@@ -1776,7 +1776,8 @@ button.group-head {
   color: var(--text-muted);
 }
 
-.meta {
+.meta,
+.item-reporter {
   color: var(--text-muted);
   font-size: var(--size-xs);
   white-space: nowrap;
