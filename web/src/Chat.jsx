@@ -3,7 +3,7 @@ import { clearDraft, getDraft, resolveImageUploadInDraft, setDraft } from "./cha
 import { Check, CircleAlert, CircleCheck, Ellipsis, ListChecks, ListPlus, MessageSquare, Play, Repeat, Reply, RotateCcw, Undo2, UserCheck, UserMinus, UserPlus, X } from "lucide-react";
 import { itemLink } from "./nav.js";
 import Button from "./ui/Button.jsx";
-import { ImageTextarea } from "./images.jsx";
+import { MentionProvider, MentionTextarea } from "./mentions.jsx";
 import Markdown, { refersToPR } from "./Markdown.jsx";
 import ScreenHead from "./ui/ScreenHead.jsx";
 
@@ -41,6 +41,7 @@ export default function Chat({ workspaceId, messages, activity = [], updateMessa
   const [actionsFor, setActionsFor] = useState(null); // Touch: the message whose actions are shown.
   const [threadId, setThreadId] = useState(null); // The thread open in the panel (its first message).
   const [prefill, setPrefill] = useState(null); // {text, at}: start the thread composer with this.
+  const [localMention, setLocalMention] = useState(null);
   const bottom = useRef(null);
   const logRef = useRef(null);
   const initialScrolled = useRef(false);
@@ -180,11 +181,16 @@ export default function Chat({ workspaceId, messages, activity = [], updateMessa
     onToggleActions: () => setActionsFor(actionsFor === m.id ? null : m.id),
   });
   const composerProps = { workspaceId, items, send };
+  const insertMention = (name) => {
+    if (thread) setPrefill({ threadId: thread.id, text: `@${name} `, at: Date.now() });
+    else setLocalMention(name);
+  };
 
   return (
     <section className={thread ? "screen chat chat-thread-open" : "screen chat"} aria-label="Chat">
       <ScreenHead title="Chat">{head}</ScreenHead>
       {error}
+      <MentionProvider onMentionClick={insertMention}>
       <div className="chat-body" ref={body} style={threadWidth ? { "--thread-width": `${threadWidth}px` } : undefined}>
         <div className="chat-main">
           <div className="chat-log" ref={logRef} onScroll={onLogScroll}>
@@ -220,7 +226,15 @@ export default function Chat({ workspaceId, messages, activity = [], updateMessa
             )}
             <div ref={bottom} />
           </div>
-          <Composer {...composerProps} mention={mention} onMentioned={onMentioned} placeholder="Message the workspace…  @Name to mention" />
+          <Composer
+            {...composerProps}
+            mention={localMention || mention}
+            onMentioned={() => {
+              if (localMention) setLocalMention(null);
+              else onMentioned();
+            }}
+            placeholder="Message the workspace…  @Name to mention"
+          />
         </div>
         {thread && <ThreadResizer body={body} width={threadWidth} onWidth={setThreadWidth} />}
         {thread && (
@@ -246,6 +260,7 @@ export default function Chat({ workspaceId, messages, activity = [], updateMessa
           </aside>
         )}
       </div>
+      </MentionProvider>
     </section>
   );
 }
@@ -493,7 +508,7 @@ function Composer({ workspaceId, parent, items, send: post, mention, onMentioned
 
   return (
     <form className="composer" onSubmit={send}>
-      <ImageTextarea
+      <MentionTextarea
         ref={composer}
         aria-label={parent ? `Reply in thread #${parent.id}` : "Message"}
         value={text}
@@ -607,7 +622,7 @@ function Message({ message, onDone, isNew, participants, me, flashed, onReply, o
             <ListChecks aria-hidden="true" />#{message.item.id} <span className="msg-item-title">{message.item.title}</span>
           </a>
         )}
-        {message.action_required && <ActionLine message={message} participants={participants} asksMe={asksMe} needsMe={needsMe} onDone={onDone} />}
+        {message.action_required && <ActionLine message={message} participants={participants} me={me} asksMe={asksMe} needsMe={needsMe} onDone={onDone} />}
         <Reactions reactions={message.reactions || []} participants={participants} me={me} onReact={onReact} />
         {children}
       </div>
@@ -635,20 +650,30 @@ function Message({ message, onDone, isNew, participants, me, flashed, onReply, o
 
 // ActionLine says whom a message asks to act (a check for those done) and,
 // when it asks you, lets you mark it done or undo that.
-function ActionLine({ message, participants, asksMe, needsMe, onDone }) {
-  const nameOf = (id) => participants.find((p) => p.id === id)?.name || `participant ${id}`;
+function ActionLine({ message, participants, me, asksMe, needsMe, onDone }) {
+  const participantOf = (id) => participants.find((p) => p.id === id);
   const done = message.done_by || [];
   return (
     <div className="action-line">
       <span className={needsMe ? "chip action-chip needs" : "chip action-chip"}>
         <CircleAlert aria-hidden="true" />
         {needsMe ? "Needs you" : "Needs"}
-        {message.action_for.map((id) => (
-          <span key={id} className={done.includes(id) ? "action-who done" : "action-who"}>
-            @{nameOf(id)}
-            {done.includes(id) && <Check aria-label="done" />}
-          </span>
-        ))}
+        {message.action_for.map((id) => {
+          const p = participantOf(id);
+          const isMe = Boolean(me && id === me.id);
+          const isDone = done.includes(id);
+          return (
+            <span key={id} className={["action-who", isMe && "me", isDone && "done"].filter(Boolean).join(" ")}>
+              {p?.emoji && (
+                <span className="action-emoji" aria-hidden="true">
+                  {p.emoji}
+                </span>
+              )}
+              @{p?.name || `participant ${id}`}
+              {isDone && <Check aria-label="done" />}
+            </span>
+          );
+        })}
       </span>
       {asksMe &&
         (needsMe ? (

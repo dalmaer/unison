@@ -1,5 +1,6 @@
 import { Fragment } from "react";
 import { MdImage, imagePath } from "./images.jsx";
+import { matchMention, participantTooltip, useMentions } from "./mentions.jsx";
 import { itemLink } from "./nav.js";
 
 // A small Markdown renderer for chat. It builds React elements only — no
@@ -17,7 +18,8 @@ import { itemLink } from "./nav.js";
 const MAX_DEPTH = 4;
 
 export default function Markdown({ text }) {
-  return <div className="md">{renderBlocks(parseBlocks(String(text ?? "").replace(/\r\n?/g, "\n").split("\n"), 0))}</div>;
+  const mentions = useMentions();
+  return <div className="md">{renderBlocks(parseBlocks(String(text ?? "").replace(/\r\n?/g, "\n").split("\n"), 0), mentions)}</div>;
 }
 
 // ---- Blocks ----
@@ -139,7 +141,7 @@ function parseList(lines, start, depth) {
   return [list, i];
 }
 
-function renderBlocks(blocks) {
+function renderBlocks(blocks, mentions) {
   return blocks.map((b, i) => {
     switch (b.type) {
       case "code":
@@ -153,32 +155,32 @@ function renderBlocks(blocks) {
       case "heading":
         return (
           <p key={i} className={`md-heading md-h${b.level}`}>
-            {renderInline(b.text)}
+            {renderInline(b.text, 0, mentions)}
           </p>
         );
       case "quote":
         return (
           <blockquote key={i} className="md-quote">
-            {renderBlocks(b.blocks)}
+            {renderBlocks(b.blocks, mentions)}
           </blockquote>
         );
       case "list":
-        return renderList(b, i);
+        return renderList(b, i, mentions);
       default:
         return (
           <p key={i} className="md-p">
-            {renderInline(b.text)}
+            {renderInline(b.text, 0, mentions)}
           </p>
         );
     }
   });
 }
 
-function renderList(list, key) {
+function renderList(list, key, mentions) {
   const items = list.items.map((item, i) => (
     <li key={i}>
-      {renderInline(item.text)}
-      {item.children && renderList(item.children, "c")}
+      {renderInline(item.text, 0, mentions)}
+      {item.children && renderList(item.children, "c", mentions)}
     </li>
   ));
   return list.ordered ? (
@@ -260,7 +262,7 @@ function count(s, ch, from, to) {
 const isSpace = (c) => c === undefined || /\s/.test(c);
 const isWord = (c) => c !== undefined && WORD.test(c);
 
-function renderInline(s, depth = 0) {
+function renderInline(s, depth = 0, mentions = {}) {
   const nodes = [];
   let text = "";
   const flush = () => {
@@ -272,7 +274,7 @@ function renderInline(s, depth = 0) {
     nodes.push(node);
   };
   const find = makeFinder(s);
-  const inner = (content) => (depth < MAX_DEPTH ? renderInline(content, depth + 1) : content);
+  const inner = (content) => (depth < MAX_DEPTH ? renderInline(content, depth + 1, mentions) : content);
 
   // Closers for paired markers: not preceded by whitespace, and for
   // underscores not followed by a word character (so snake_case stays).
@@ -358,7 +360,7 @@ function renderInline(s, depth = 0) {
         const href = end !== -1 ? safeHref(s.slice(close + 2, end)) : null;
         const label = s.slice(i + 1, close);
         if (href && label.trim()) {
-          push(link(href, depth < MAX_DEPTH ? renderInline(label, MAX_DEPTH) : label, i));
+          push(link(href, depth < MAX_DEPTH ? renderInline(label, MAX_DEPTH, mentions) : label, i));
           i = end + 1;
           continue;
         }
@@ -390,12 +392,62 @@ function renderInline(s, depth = 0) {
       }
     }
     if (c === "@" && !isWord(s[i - 1]) && /[\p{L}\p{N}_]/u.test(s[i + 1] ?? "")) {
+      const matched = matchMention(s, i, mentions.participants);
+      if (matched) {
+        if (matched.kind === "broadcast") {
+          const onClick = mentions.onMentionClick;
+          const label = `@${matched.name}`;
+          push(
+            onClick ? (
+              <button
+                key={i}
+                type="button"
+                className="md-mention md-mention-chip md-mention-all"
+                title="Notify everyone in the workspace"
+                onClick={() => onClick(matched.name)}
+              >
+                {label}
+              </button>
+            ) : (
+              <span key={i} className="md-mention md-mention-chip md-mention-all" title="Notify everyone in the workspace">
+                {label}
+              </span>
+            ),
+          );
+          i += 1 + matched.length;
+          continue;
+        }
+        const p = matched.participant;
+        const isMe = Boolean(mentions.me && p.id === mentions.me.id);
+        const cls = isMe ? "md-mention md-mention-chip md-mention-me" : "md-mention md-mention-chip";
+        const tip = participantTooltip(p);
+        const onClick = mentions.onMentionClick;
+        const innerChip = (
+          <>
+            {p.emoji && (
+              <span className="md-mention-emoji" aria-hidden="true">
+                {p.emoji}
+              </span>
+            )}
+            @{p.name}
+          </>
+        );
+        push(
+          onClick ? (
+            <button key={i} type="button" className={cls} title={tip} onClick={() => onClick(p.name)}>
+              {innerChip}
+            </button>
+          ) : (
+            <span key={i} className={cls} title={tip}>
+              {innerChip}
+            </span>
+          ),
+        );
+        i += 1 + matched.length;
+        continue;
+      }
       const m = s.slice(i + 1, i + 65).match(/^[\p{L}\p{N}_.-]*[\p{L}\p{N}_]/u);
-      push(
-        <span key={i} className="md-mention">
-          @{m[0]}
-        </span>,
-      );
+      text += `@${m[0]}`;
       i += 1 + m[0].length;
       continue;
     }

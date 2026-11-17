@@ -25,6 +25,7 @@ import { Input, Textarea } from "./ui/Input.jsx";
 import ThemeSwitch from "./ui/ThemeSwitch.jsx";
 import WorkspaceSwitcher from "./WorkspaceSwitcher.jsx";
 import { ImageUpload, imageUploader } from "./images.jsx";
+import { MentionProvider } from "./mentions.jsx";
 import { ShortcutsDialog, isEditableTarget, shouldIgnoreShortcut } from "./shortcuts.jsx";
 
 const ACTIVE_WINDOW_MS = 2 * 60 * 1000;
@@ -469,6 +470,7 @@ export default function Workspace({ id, view, navigate, account }) {
 
   return (
     <ImageUpload.Provider value={uploader}>
+    <MentionProvider participants={participants} me={me}>
     <div className={joined ? "shell" : "shell shell-unjoined"}>
       <Sidebar
         workspace={workspace}
@@ -566,6 +568,7 @@ export default function Workspace({ id, view, navigate, account }) {
       )}
       {joined && <TabBar view={view} counts={counts} screens={screens} />}
     </div>
+    </MentionProvider>
     </ImageUpload.Provider>
   );
 }
