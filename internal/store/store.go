@@ -1099,9 +1099,9 @@ func (s *Store) EventsAfter(ctx context.Context, wsID string, after int64, limit
 }
 
 // ActivityTypes are the events chat shows as one-line activity updates
-// (#93, #97, #146): backlog items added, assigned, started (not renewed),
-// closed and reopened, and people joining and leaving.
-var ActivityTypes = []string{"backlog.added", "backlog.assigned", "backlog.started", "backlog.closed", "backlog.reopened", "participant.joined", "member.removed"}
+// (#93, #97, #146, #312): backlog items added, assigned, started (not renewed),
+// closed and reopened, item comments, and people joining and leaving.
+var ActivityTypes = []string{"backlog.added", "backlog.assigned", "backlog.started", "backlog.closed", "backlog.reopened", "comment.added", "participant.joined", "member.removed"}
 
 // RecentActivity returns the workspace's latest activity events (see
 // ActivityTypes), oldest first: at most limit of them (default 200, clamped

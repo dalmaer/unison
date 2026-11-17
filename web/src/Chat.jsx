@@ -215,6 +215,7 @@ const ACTIVITY_ICONS = {
   "backlog.started": Play,
   "backlog.closed": CircleCheck,
   "backlog.reopened": RotateCcw,
+  "comment.added": MessageSquare,
   "participant.joined": UserPlus,
   "member.removed": UserMinus,
 };
@@ -246,6 +247,8 @@ function activityText(event, participants) {
       return [name(actor), "closed", d];
     case "backlog.reopened":
       return [name(actor), "reopened", d];
+    case "comment.added":
+      return [isRecurringRun(event) ? "Recurring task" : name(actor), "commented on", d.item];
     case "participant.joined":
       return [name(d), d.sponsor ? `joined · agent of ${d.sponsor.display_name}` : "joined"];
     case "member.removed":
@@ -257,7 +260,7 @@ function activityText(event, participants) {
 }
 
 function isRecurringRun(event) {
-  return event.type === "backlog.added" && !event.actor_id && Boolean(event.data?.schedule_id);
+  return !event.actor_id && ((event.type === "backlog.added" && Boolean(event.data?.schedule_id)) || event.type === "comment.added");
 }
 
 // ActivityLine is one activity event in the main log: a small pill on a

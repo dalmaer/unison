@@ -50,7 +50,7 @@ function lastSeen(p) {
 
 // The events chat shows as one-line activity updates (#93); the server's
 // store.ActivityTypes.
-const ACTIVITY_TYPES = ["backlog.added", "backlog.assigned", "backlog.started", "backlog.closed", "backlog.reopened", "participant.joined", "member.removed"];
+const ACTIVITY_TYPES = ["backlog.added", "backlog.assigned", "backlog.started", "backlog.closed", "backlog.reopened", "comment.added", "participant.joined", "member.removed"];
 
 // Item events after which other items' positions may have changed.
 const RENUMBERS = ["backlog.added", "backlog.moved", "backlog.closed", "backlog.reopened", "backlog.deleted"];
