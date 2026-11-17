@@ -61,7 +61,6 @@ function Home({ navigate, account }) {
     );
   }, [showLists]);
 
-  const lists = <WorkspaceLists workspaces={workspaces} error={error} navigate={navigate} />;
   if (!account.ready) {
     return (
       <div className="landing">
@@ -69,117 +68,13 @@ function Home({ navigate, account }) {
       </div>
     );
   }
-  if (!account.user) {
-    return (
-      <Landing account={account}>
-        {noSignIn && (
-          <section className="landing-workspaces" aria-label="Workspaces">
-            {lists}
-            {/* Without sign-in there is no other way to start a workspace. */}
-            {workspaces && <CreateWorkspace navigate={navigate} />}
-          </section>
-        )}
-      </Landing>
-    );
-  }
   return (
-    <div className="landing home-shell">
-      <SiteHeader account={account} />
-      <main className="home">
-        {lists}
-        <CreateWorkspace navigate={navigate} />
-        <p className="muted home-foot">
-          Agents: read <a href="/agent.md">/agent.md</a>.
-        </p>
-      </main>
-    </div>
-  );
-}
-
-function WorkspaceLink({ ws, navigate }) {
-  return (
-    <li>
-      <a
-        href={`/w/${ws.id}`}
-        onClick={(e) => {
-          e.preventDefault();
-          navigate(`/w/${ws.id}`);
-        }}
-      >
-        {ws.name}
-      </a>
-      {ws.repo_url && <small className="muted">{ws.repo_url.replace(/^https?:\/\//, "")}</small>}
-    </li>
-  );
-}
-
-// WorkspaceLists: the workspaces you're a member of.
-function WorkspaceLists({ workspaces, error, navigate }) {
-  if (error) return <p role="alert">Error: {error}</p>;
-  return (
-    <section className="card">
-      <h2 className="card-head">Your workspaces</h2>
-      {workspaces === null ? (
-        <p className="card-body muted">Loading…</p>
-      ) : workspaces.length === 0 ? (
-        <p className="card-body muted">No workspaces yet. Create one, or open an invite link from a member.</p>
-      ) : (
-        <ul className="ws-list">
-          {workspaces.map((ws) => (
-            <WorkspaceLink key={ws.id} ws={ws} navigate={navigate} />
-          ))}
-        </ul>
-      )}
-    </section>
-  );
-}
-
-function CreateWorkspace({ navigate }) {
-  const [form, setForm] = useState({ name: "", repo_url: "", canvas_url: "" });
-  const [error, setError] = useState("");
-  const create = async (e) => {
-    e.preventDefault();
-    setError("");
-    try {
-      const ws = await api("POST", "/api/workspaces", { body: form });
-      navigate(`/w/${ws.id}`);
-    } catch (err) {
-      // UNISON_CREATORS limits creation to listed accounts.
-      if (err instanceof ApiError && err.status === 403) {
-        setError("This server only lets approved accounts create workspaces. Ask whoever runs it to add your email, or ask a member of a workspace for an invite.");
-      } else if (err instanceof ApiError && err.status === 401) {
-        setError("Sign in to create a workspace on this server.");
-      } else setError(err.message);
-    }
-  };
-  const field = (key) => ({
-    value: form[key],
-    onChange: (e) => setForm({ ...form, [key]: e.target.value }),
-  });
-  return (
-    <section className="card">
-      <h2 className="card-head">Create a workspace</h2>
-      <form className="form card-body" onSubmit={create}>
-        {error && (
-          <p role="alert" className="field-error">
-            {error}
-          </p>
-        )}
-        <Field label="Name">
-          <Input required {...field("name")} placeholder="Unison" />
-        </Field>
-        <Field label="Repository URL">
-          <Input {...field("repo_url")} placeholder="https://github.com/digitalex/unison" />
-        </Field>
-        <Field label="Isocan canvas URL">
-          <Input {...field("canvas_url")} placeholder="https://isocan.io/p/…" />
-        </Field>
-        <div className="actions-row">
-          <Button variant="primary" type="submit">
-            Create
-          </Button>
-        </div>
-      </form>
-    </section>
+    <Landing
+      account={account}
+      workspaces={workspaces}
+      workspacesError={error}
+      showLists={showLists}
+      navigate={navigate}
+    />
   );
 }

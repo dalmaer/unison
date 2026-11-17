@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowUpRight, Bot, ChevronDown, FolderGit2, Globe, Keyboard, KeyRound, LayoutGrid, Link2, ListTodo, MessageCircle, Pencil, Plus, RefreshCw, Repeat, Settings, UserPlus } from "lucide-react";
-import { ApiError, getToken, setToken, workspaceApi } from "./api.js";
+import { ApiError, PageUnloadingError, getToken, setToken, workspaceApi } from "./api.js";
 import { AccountMenu } from "./Account.jsx";
 import { markSeen } from "./activity.js";
 import Backlog from "./Backlog.jsx";
@@ -171,6 +171,10 @@ export default function Workspace({ id, view, navigate, account }) {
   const [error, setError] = useState("");
   const [editingMe, setEditingMe] = useState(false); // MeDialog is open
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [upgradeReady, setUpgradeReady] = useState(false);
+  const [sessionExpired, setSessionExpired] = useState(false);
+  const loadedOnce = useRef(false);
+  const webVersion = useRef(null);
   const joined = Boolean(me);
 
   useEffect(() => {
@@ -226,7 +230,15 @@ export default function Workspace({ id, view, navigate, account }) {
     me: () => call("GET", "/me").then(setMe, (e) => (e instanceof ApiError && e.code === "join_first" ? setMe(null) : Promise.reject(e))),
   };
   const refused = (e) => {
-    if (!isGateError(e)) return setError(e.message);
+    if (e instanceof PageUnloadingError) return;
+    if (e instanceof ApiError && e.code === "session_expired") {
+      setSessionExpired(true);
+      return;
+    }
+    if (!isGateError(e)) {
+      if (!(e instanceof ApiError) && loadedOnce.current) return;
+      return setError(e.message);
+    }
     // A token that stopped working is useless: forget it.
     if (token && e.code !== "not_member") setToken(id, "");
     setGate({ code: e.code, message: e.message });
@@ -243,6 +255,11 @@ export default function Workspace({ id, view, navigate, account }) {
     }
     state.busy = true;
     loaders[name]()
+      .then(() => {
+        if (name === "workspace") loadedOnce.current = true;
+        setSessionExpired(false);
+        setError("");
+      })
       .catch(refused)
       .finally(() => {
         state.busy = false;
@@ -305,6 +322,25 @@ export default function Workspace({ id, view, navigate, account }) {
       if (opened) loadAll();
       opened = true;
     };
+    src.addEventListener("ready", (e) => {
+      try {
+        const { version } = JSON.parse(e.data || "{}");
+        if (!version) return;
+        if (!webVersion.current) {
+          webVersion.current = version;
+          return;
+        }
+        if (webVersion.current !== version) {
+          const busy =
+            Boolean(document.querySelector('[role="dialog"]')) ||
+            Array.from(document.querySelectorAll('textarea, input[type="text"]')).some((el) => el.value?.trim());
+          if (!busy) window.location.reload();
+          else setUpgradeReady(true);
+        }
+      } catch {
+        // Ignore malformed ready payload.
+      }
+    });
     src.onerror = () => setLive(false);
     src.onmessage = (msg) => {
       const event = JSON.parse(msg.data);
@@ -335,13 +371,32 @@ export default function Workspace({ id, view, navigate, account }) {
   const headExtras = (
     <HeadExtras workspace={workspace} call={call} account={account} members={members} settingsLink={screens.link("settings")} onOpenShortcuts={() => setShortcutsOpen(true)} />
   );
-  const errorBar = error && (
+  const errorBar = sessionExpired ? (
     <p role="alert" className="error-bar">
-      Error: {error}{" "}
-      <Button variant="ghost" onClick={() => setError("")}>
+      Your session expired. Reload to sign in again (unsent drafts are preserved).{" "}
+      <Button variant="primary" size="small" onClick={() => window.location.reload()}>
+        Reload
+      </Button>
+    </p>
+  ) : upgradeReady ? (
+    <p role="status" className="error-bar">
+      A new version of Unison is available.{" "}
+      <Button variant="primary" size="small" onClick={() => window.location.reload()}>
+        Reload
+      </Button>
+      <Button variant="ghost" onClick={() => setUpgradeReady(false)}>
         dismiss
       </Button>
     </p>
+  ) : (
+    error && (
+      <p role="alert" className="error-bar">
+        Error: {error}{" "}
+        <Button variant="ghost" onClick={() => setError("")}>
+          dismiss
+        </Button>
+      </p>
+    )
   );
 
   return (
