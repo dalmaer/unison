@@ -41,7 +41,6 @@ export default function Chat({ workspaceId, messages, activity = [], updateMessa
   const [actionsFor, setActionsFor] = useState(null); // Touch: the message whose actions are shown.
   const [threadId, setThreadId] = useState(null); // The thread open in the panel (its first message).
   const [prefill, setPrefill] = useState(null); // {text, at}: start the thread composer with this.
-  const flashed = useShowMessage(shown, messages);
   const bottom = useRef(null);
   // Messages you sent that the server hasn't confirmed yet (#128): shown at
   // once, kept out of messages so they never count as read or unread.
@@ -64,6 +63,10 @@ export default function Chat({ workspaceId, messages, activity = [], updateMessa
   const thread = threadId ? byId.get(threadId) : null;
 
   useOpenShownThread(shown, byId, setThreadId);
+  const shownMessage = shown ? byId.get(shown.id) : null;
+  const shownParent = shownMessage?.parent_id && byId.has(shownMessage.parent_id) ? shownMessage.parent_id : null;
+  const threadReady = !shownParent || thread?.id === shownParent;
+  const flashed = useShowMessage(shown, messages, threadReady);
   const readUpTo = useThreadsRead(thread, replies);
   useEffect(() => {
     if (!thread) return;
@@ -500,9 +503,9 @@ function itemMentioned(text, items) {
 
 // useShowMessage scrolls to the shown message once it is rendered, focuses
 // it, and returns its id while it should be highlighted.
-function useShowMessage(shown, messages) {
+function useShowMessage(shown, messages, ready = true) {
   const [flashed, setFlashed] = useState(null);
-  const present = Boolean(shown && messages.some((m) => m.id === shown.id));
+  const present = Boolean(shown && ready && messages.some((m) => m.id === shown.id));
   useEffect(() => {
     if (!present) return;
     setFlashed(shown.id);
