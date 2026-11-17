@@ -251,6 +251,7 @@ function BacklogRow({ item, list, highlight, participants, me, repos, run, reord
             {item.comment_count}
           </span>
         )}
+        <span className="item-reporter">by {name(participants, item.created_by)}</span>
         {item.assignee_id && <span className="chip">{name(participants, item.assignee_id)}</span>}
         <span className="meta">{meta(item)}</span>
         {canStart && (

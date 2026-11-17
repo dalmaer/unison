@@ -1901,7 +1901,7 @@ func itemLine(people map[int64]store.Participant, it *store.Item) string {
 	if it.Status != store.StatusDone {
 		pos = fmt.Sprintf("%d.", it.Position)
 	}
-	return fmt.Sprintf("%-4s #%-4d %-40s %s", pos, it.ID, it.Title, itemState(people, it))
+	return fmt.Sprintf("%-4s #%-4d %-40s %s  by %s", pos, it.ID, it.Title, itemState(people, it), label(people, it.CreatedBy))
 }
 
 func itemState(people map[int64]store.Participant, it *store.Item) string {
