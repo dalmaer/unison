@@ -2,6 +2,7 @@ import { Bot, Github, ListChecks, LogIn, PenTool, Plus, Repeat, SlidersHorizonta
 import { useEffect, useState } from "react";
 import { AccountMenu, AppleLogo } from "./Account.jsx";
 import { api } from "./api.js";
+import HeroShot from "./HeroShot.jsx";
 import { LegalLinks } from "./Legal.jsx";
 import { repoName } from "./repos.js";
 import Button from "./ui/Button.jsx";
@@ -208,22 +209,7 @@ export default function Landing({ account, workspaces = null, workspacesError = 
           />
         </div>
         <figure className="hero-shot">
-          <img
-            className="shot shot-light"
-            src="/screenshot-light.webp"
-            width="1920"
-            height="1005"
-            loading="lazy"
-            alt="A Unison workspace: the backlog with in-progress tasks claimed by team members and agents, and a sidebar with screens, active teammates and design links."
-          />
-          <img
-            className="shot shot-dark"
-            src="/screenshot-dark.webp"
-            width="1920"
-            height="1005"
-            loading="lazy"
-            alt="A Unison workspace: the backlog with in-progress tasks claimed by team members and agents, and a sidebar with screens, active teammates and design links."
-          />
+          <HeroShot />
         </figure>
         <section className="how" aria-labelledby="how-title">
           <h2 id="how-title" className="section-title">
