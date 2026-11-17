@@ -4,14 +4,18 @@ package server
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"log"
 	"net/http"
 	"os"
+	"regexp"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -55,7 +59,9 @@ type Server struct {
 	// reviewFails slows down guessing the App Review code (review.go).
 	reviewFails reviewLimiter
 
-	version string
+	version    string
+	webVersion string
+	indexHTML  []byte
 }
 
 // SetVersion sets the build version advertised by X-Unison-Version and /api/version.
@@ -70,9 +76,41 @@ func isStampedVersion(v string) bool {
 func New(st *store.Store, web fs.FS) *Server {
 	s := &Server{store: st, web: web, mux: http.NewServeMux(), ws: http.NewServeMux(), notify: map[string]chan struct{}{},
 		reviewFails: reviewLimiter{retry: reviewRetry}}
+	s.webVersion, s.indexHTML = prepareWebAssets(web)
 	s.SetAuth(AuthConfig{})
 	s.routes()
 	return s
+}
+
+var assetAttrRe = regexp.MustCompile(`((?:src|href)="/assets/[^"?]+)(")`)
+
+func prepareWebAssets(web fs.FS) (string, []byte) {
+	if web == nil {
+		return "", nil
+	}
+	var paths []string
+	_ = fs.WalkDir(web, ".", func(p string, d fs.DirEntry, err error) error {
+		if err == nil && !d.IsDir() {
+			paths = append(paths, p)
+		}
+		return nil
+	})
+	sort.Strings(paths)
+	h := sha256.New()
+	for _, p := range paths {
+		fmt.Fprintf(h, "%s\x00", p)
+		if f, err := web.Open(p); err == nil {
+			_, _ = io.Copy(h, f)
+			f.Close()
+		}
+	}
+	ver := fmt.Sprintf("%x", h.Sum(nil))[:12]
+	raw, err := fs.ReadFile(web, "index.html")
+	if err != nil {
+		return ver, nil
+	}
+	rewritten := assetAttrRe.ReplaceAllString(string(raw), `$1?v=`+ver+`$2`)
+	return ver, []byte(rewritten)
 }
 
 // statusClientClosedRequest is the non-standard HTTP status for a client
@@ -1076,7 +1114,7 @@ func (s *Server) stream(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
-	fmt.Fprintf(w, "event: ready\ndata: {\"cursor\":%d}\n\n", after)
+	fmt.Fprintf(w, "event: ready\ndata: {\"cursor\":%d,\"version\":%q}\n\n", after, s.webVersion)
 	flusher.Flush()
 	heartbeat := time.NewTicker(20 * time.Second)
 	defer heartbeat.Stop()
@@ -1160,14 +1198,28 @@ func (s *Server) serveWeb(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	path := strings.TrimPrefix(r.URL.Path, "/")
-	if path != "" {
+	if path != "" && path != "index.html" {
 		if f, err := s.web.Open(path); err == nil {
 			f.Close()
+			if s.webVersion != "" {
+				w.Header().Set("ETag", `"`+s.webVersion+`"`)
+				if r.URL.Query().Get("v") == s.webVersion {
+					w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+				} else {
+					w.Header().Set("Cache-Control", "no-cache")
+				}
+			}
 			http.FileServerFS(s.web).ServeHTTP(w, r)
 			return
 		}
 	}
-	// Single-page app: every other path renders index.html.
+	// Single-page app: every other path renders index.html (never cached).
+	w.Header().Set("Cache-Control", "no-cache")
+	if len(s.indexHTML) > 0 {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write(s.indexHTML)
+		return
+	}
 	http.ServeFileFS(w, r, s.web, "index.html")
 }
 
