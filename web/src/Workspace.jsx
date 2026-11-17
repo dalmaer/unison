@@ -217,16 +217,11 @@ export default function Workspace({ id, view, navigate, account }) {
 
   const loaders = {
     workspace: () => call("GET").then(setWorkspace),
-<<<<<<< HEAD
     participants: () =>
       call("GET", "/participants").then((list) => {
         setParticipants(list);
         setParticipantsLoaded(true);
       }),
-    messages: () => call("GET", "/messages?limit=500").then(setMessages),
-    activity: () => call("GET", "/activity").then(setActivity),
-=======
-    participants: () => call("GET", "/participants").then(setParticipants),
     messages: () =>
       call("GET", `/messages?limit=${CHAT_PAGE}`).then((fresh) => {
         const prev = messagesNow.current;
@@ -251,7 +246,6 @@ export default function Workspace({ id, view, navigate, account }) {
         });
         if (!hasOlder) setHasMoreActivity(fresh.length >= ACTIVITY_PAGE);
       }),
->>>>>>> origin/main
     // Everything, done items included: on load and after a reconnect only.
     backlog: () => call("GET", "/backlog?status=all").then(setBacklog),
     // Open and assigned items, after events that renumber them (#105).
@@ -314,12 +308,9 @@ export default function Workspace({ id, view, navigate, account }) {
   useEffect(() => {
     if (!account.ready) return;
     setGate(null);
-<<<<<<< HEAD
     setParticipantsLoaded(false);
-=======
     setHasMoreMessages(false);
     setHasMoreActivity(false);
->>>>>>> origin/main
     loadAll();
   }, [id, token, account.ready, joins]);
 
