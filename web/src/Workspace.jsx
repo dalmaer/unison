@@ -29,18 +29,16 @@ import { ShortcutsDialog, isEditableTarget, shouldIgnoreShortcut } from "./short
 
 const ACTIVE_WINDOW_MS = 2 * 60 * 1000;
 const DORMANT_WINDOW_MS = 15 * 60 * 1000;
-// Agents not seen this long drop off the roster (#125); they're still
-// participants (chat and the backlog show their names).
-const AGENT_GONE_MS = 24 * 60 * 60 * 1000;
 
 function isDormant(p, now) {
-  return agentStatus(p, now) || !p.last_seen_at || now - p.last_seen_at >= DORMANT_WINDOW_MS;
+  return Boolean(agentStatus(p, now)) || !p.last_seen_at || now - p.last_seen_at >= DORMANT_WINDOW_MS;
 }
 
-// roster is who the Humans and Agents lists show: everyone but agents (other
-// than you) not seen in AGENT_GONE_MS.
-function roster(participants, me, now = Date.now()) {
-  return participants.filter((p) => !p.sponsor || p.id === me?.id || now - (p.last_seen_at || 0) < AGENT_GONE_MS);
+// roster is who the sidebar's Humans and Agents lists and counts show (#307):
+// all humans, plus active agents (seen within DORMANT_WINDOW_MS and not retired
+// or revoked). Inactive agents remain participants in chat and backlog history.
+function roster(participants, now = Date.now()) {
+  return participants.filter((p) => !p.sponsor || !isDormant(p, now));
 }
 
 // Agents are the participants that joined with a pass, for a sponsor.
@@ -156,6 +154,8 @@ export default function Workspace({ id, view, navigate, account }) {
   useTabTitle(gate ? "" : workspace?.name);
   const [me, setMe] = useState(null);
   const [participants, setParticipants] = useState([]);
+  const [participantsLoaded, setParticipantsLoaded] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
   const [messages, setMessages] = useState([]);
   const [activity, setActivity] = useState([]);
   const [backlog, setBacklog] = useState([]);
@@ -200,9 +200,18 @@ export default function Workspace({ id, view, navigate, account }) {
   const notify = useNotifier(me, participants, view);
   const reviews = usePendingReviews(call, joined ? workspace : null);
 
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 15000);
+    return () => clearInterval(timer);
+  }, []);
+
   const loaders = {
     workspace: () => call("GET").then(setWorkspace),
-    participants: () => call("GET", "/participants").then(setParticipants),
+    participants: () =>
+      call("GET", "/participants").then((list) => {
+        setParticipants(list);
+        setParticipantsLoaded(true);
+      }),
     messages: () => call("GET", "/messages?limit=500").then(setMessages),
     activity: () => call("GET", "/activity").then(setActivity),
     // Everything, done items included: on load and after a reconnect only.
@@ -254,6 +263,7 @@ export default function Workspace({ id, view, navigate, account }) {
   useEffect(() => {
     if (!account.ready) return;
     setGate(null);
+    setParticipantsLoaded(false);
     loadAll();
   }, [id, token, account.ready, joins]);
 
@@ -319,6 +329,8 @@ export default function Workspace({ id, view, navigate, account }) {
   if (!workspace) return <main className="page">{error ? <p role="alert">Error: {error}</p> : <p>Loading…</p>}</main>;
 
   const counts = { backlog: backlog.filter((it) => it.status !== "done").length, recurring: schedules.length, chat: unread, actions: me?.open_actions || 0 };
+  const sidebarParticipants = useMemo(() => roster(participants, now), [participants, now]);
+  const emptyAgents = participantsLoaded && !sidebarParticipants.some(KINDS.agents);
   // The screen header's controls on phones: Invite and the account menu.
   const headExtras = (
     <HeadExtras workspace={workspace} call={call} account={account} members={members} settingsLink={screens.link("settings")} onOpenShortcuts={() => setShortcutsOpen(true)} />
@@ -345,26 +357,38 @@ export default function Workspace({ id, view, navigate, account }) {
         account={account}
         onOpenShortcuts={() => setShortcutsOpen(true)}
         navigate={navigate}
-        participants={roster(participants, me)}
+        participants={participantsLoaded ? sidebarParticipants : null}
         reviews={reviews}
         call={call}
         people={
           joined &&
-          ((kind) => (
-            <>
-              <People
-                kind={kind}
-                participants={participants}
-                me={me}
-                onEditMe={() => setEditingMe(true)}
-                onMention={(name) => {
-                  setMention(name);
-                  screens.show("chat");
-                }}
-              />
-              <InviteButton kind={kind === "agents" ? "agent" : "person"} workspace={workspace} account={account} members={members} call={call} className="nav-link nav-invite" />
-            </>
-          ))
+          ((kind) => {
+            const highlightAgentInvite = kind === "agents" && emptyAgents;
+            return (
+              <>
+                <People
+                  kind={kind}
+                  participants={sidebarParticipants}
+                  me={me}
+                  now={now}
+                  onEditMe={() => setEditingMe(true)}
+                  onMention={(name) => {
+                    setMention(name);
+                    screens.show("chat");
+                  }}
+                />
+                <InviteButton
+                  kind={kind === "agents" ? "agent" : "person"}
+                  workspace={workspace}
+                  account={account}
+                  members={members}
+                  call={call}
+                  className={highlightAgentInvite ? "nav-link nav-invite nav-invite-highlight" : "nav-link nav-invite"}
+                  callout={highlightAgentInvite ? "Invite an agent collaborator here" : ""}
+                />
+              </>
+            );
+          })
         }
       />
       {editingMe && me && (
@@ -619,9 +643,11 @@ function Sidebar({ workspace, view, joined, live, counts, screens, account, onOp
   const [reviewsOpen, setReviewsOpen] = useState(true);
 
   // If the user hasn't explicitly toggled, collapse some sections by default:
-  // low height collapses humans and agents first; very low height collapses
+  // low height collapses humans and agents first (except an empty Agents
+  // section so its onboarding callout stays visible); very low height collapses
   // links too.
-  const peopleOpen = (kind) => userPeopleOpen[kind] ?? !isLowHeight;
+  const hasActiveAgents = !participants || participants.some(KINDS.agents);
+  const peopleOpen = (kind) => userPeopleOpen[kind] ?? (kind === "agents" && !hasActiveAgents ? true : !isLowHeight);
   const linksOpen = userLinksOpen !== null ? userLinksOpen : !isVeryLowHeight;
 
   const peopleCount = (kind) => (participants ? participants.filter(KINDS[kind]).length : null);
@@ -837,12 +863,12 @@ function NotifyRow() {
 }
 
 const INVITE_KINDS = {
-  person: { title: "Invite a human", Icon: UserPlus },
+  person: { title: "Invite humans", Icon: UserPlus },
   agent: { title: "Invite an agent", Icon: Bot },
 };
 
-// InviteButton: Invite a human or an agent, in a modal.
-function InviteButton({ kind, workspace, account, members, call, className }) {
+// InviteButton: Invite humans or an agent, in a modal.
+function InviteButton({ kind, workspace, account, members, call, className, callout }) {
   const { title, Icon } = INVITE_KINDS[kind];
   const [open, setOpen] = useState(false);
   const close = () => setOpen(false);
@@ -852,6 +878,11 @@ function InviteButton({ kind, workspace, account, members, call, className }) {
         <Icon aria-hidden="true" />
         <span className="label">{title}</span>
       </button>
+      {callout && (
+        <button type="button" className="nav-invite-callout" aria-haspopup="dialog" onClick={() => setOpen(true)}>
+          {callout}
+        </button>
+      )}
       {open && (
         <Dialog title={title} onClose={close} className="invite-dialog">
           <Invite kind={kind} workspaceId={workspace.id} account={account} members={members} call={call} onNavigate={close} />
@@ -1096,44 +1127,43 @@ function byName(participants) {
 // " (model)" for a participant that says which model it runs on (#304).
 const modelOf = (p) => (p.model ? ` (${p.model})` : "");
 
-// People: who's here among the humans or the agents (kind), one row per participant (an account has one per
-// workspace, #99), with a presence dot and, for an agent that reports it, its model (#304); the status line is in
-// the row's tooltip, so rows stay one name wide. Inactive users
-// (15m without activity) are greyed, have their status hidden, and are stacked
-// at the end of the list; hovering one says when they were last seen. Agents
-// not seen in 24 hours aren't listed (#125). Your own row opens MeDialog (your name, emoji and status, #303);
-// anyone else's starts a chat message to them (@Name).
-function People({ kind, participants, me, onEditMe, onMention }) {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 15000);
-    return () => clearInterval(timer);
-  }, []);
-
+// People: who's here among the humans or the agents (kind), one row per
+// participant (an account has one per workspace, #99), with a presence dot
+// and, for an agent that reports it, its model (#304); the status line is in
+// the row's tooltip, so rows stay one name wide. Inactive agents (>15m) are
+// omitted from `participants` by `roster` (#307). Inactive humans (>15m) are
+// rendered after active humans as greyed-out standard rows showing emoji, name,
+// and status on hover (#307). Your own row opens MeDialog (your name, emoji
+// and status, #303); anyone else's starts a chat message to them (@Name).
+function People({ kind, participants, me, now, onEditMe, onMention }) {
   const activePeople = [];
   const dormantPeople = [];
-  for (const p of byName(roster(participants, me, now).filter(KINDS[kind]))) {
+  for (const p of byName(participants.filter(KINDS[kind]))) {
     if (isDormant(p, now)) {
       dormantPeople.push(p);
     } else {
       activePeople.push(p);
     }
   }
+  const ordered = [...activePeople, ...dormantPeople];
+  if (ordered.length === 0) return null;
 
   return (
     <ul className="nav-list people" aria-label={kind === "agents" ? "Agents here" : "Humans here"}>
-      {activePeople.map((p) => {
+      {ordered.map((p) => {
+        const dormant = isDormant(p, now);
         // Logged-out (or revoked) agents are never shown as active.
-        const active = now - p.last_seen_at < ACTIVE_WINDOW_MS && !agentStatus(p, now);
+        const active = !dormant && now - p.last_seen_at < ACTIVE_WINDOW_MS && !agentStatus(p, now);
         const mine = me && p.id === me.id;
         const agentOf = p.sponsor ? ` · agent of ${p.sponsor.display_name}` : "";
-        const status = p.status || (active ? "active" : "away");
+        const status = p.status || (dormant ? "inactive" : active ? "active" : "away");
         const label = `${p.name}${modelOf(p)}${agentOf}${mine ? " (you)" : ""} — ${status}${active ? "" : ` · ${lastSeen(p)}`}`;
+        const rowClass = dormant ? "nav-link person dormant" : "nav-link person";
         const content = (
           <>
             <span className={active ? "avatar active" : "avatar"} aria-hidden="true">
               {p.emoji}
-              <span className="dot" />
+              {!dormant && <span className="dot" />}
             </span>
             <span className="person-name">{p.name}</span>
             {p.model && <span className="person-model">{p.model}</span>}
@@ -1142,42 +1172,17 @@ function People({ kind, participants, me, onEditMe, onMention }) {
         return (
           <li key={p.id}>
             {mine ? (
-              <button type="button" className="nav-link person" title={`${label} · edit your name, emoji and status`} aria-label={`${label}. Edit your name, emoji and status`} onClick={onEditMe}>
+              <button type="button" className={rowClass} title={`${label} · edit your name, emoji and status`} aria-label={`${label}. Edit your name, emoji and status`} onClick={onEditMe}>
                 {content}
               </button>
             ) : (
-              <button type="button" className="nav-link person" title={`${label} · message @${p.name}`} aria-label={`${label}. Message @${p.name}`} onClick={() => onMention(p.name)}>
+              <button type="button" className={rowClass} title={`${label} · message @${p.name}`} aria-label={`${label}. Message @${p.name}`} onClick={() => onMention(p.name)}>
                 {content}
               </button>
             )}
           </li>
         );
       })}
-      {dormantPeople.length > 0 && (
-        <li className={activePeople.length > 0 ? "dormant-row with-sep" : "dormant-row"} key="dormant">
-          <div className="dormant-stack" aria-label="Inactive users">
-            {dormantPeople.map((p) => {
-              const mine = me && p.id === me.id;
-              const agentOf = p.sponsor ? ` · agent of ${p.sponsor.display_name}` : "";
-              const label = `${p.name}${modelOf(p)}${agentOf}${mine ? " (you)" : ""} — inactive · ${lastSeen(p)}`;
-              return (
-                <button
-                  key={p.id}
-                  type="button"
-                  className="dormant-chip"
-                  title={mine ? `${label} · edit your name, emoji and status` : `${label} · message @${p.name}`}
-                  aria-label={mine ? `${label}. Edit your name, emoji and status` : `${label}. Message @${p.name}`}
-                  onClick={mine ? onEditMe : () => onMention(p.name)}
-                >
-                  <span className="avatar dormant" aria-hidden="true">
-                    {p.emoji}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </li>
-      )}
     </ul>
   );
 }
