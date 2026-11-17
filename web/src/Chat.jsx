@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { clearDraft, getDraft, resolveImageUploadInDraft, setDraft } from "./chatDrafts.js";
 import { Check, CircleAlert, CircleCheck, Ellipsis, ListChecks, ListPlus, MessageSquare, Play, Repeat, Reply, RotateCcw, Undo2, UserCheck, UserMinus, UserPlus, X } from "lucide-react";
 import { itemLink } from "./nav.js";
@@ -37,19 +37,48 @@ const REACTIONS = [
   { emoji: "😂", label: "Laughing" },
 ];
 
-export default function Chat({ workspaceId, messages, activity = [], updateMessages, newAfter, mention, onMentioned, items, participants, me, call, onError, shown, head, error }) {
+export default function Chat({ workspaceId, messages, activity = [], updateMessages, newAfter, mention, onMentioned, items, participants, me, call, onError, shown, head, error, hasMoreMessages = false, loadingOlder = false, onLoadOlder }) {
   const [actionsFor, setActionsFor] = useState(null); // Touch: the message whose actions are shown.
   const [threadId, setThreadId] = useState(null); // The thread open in the panel (its first message).
   const [prefill, setPrefill] = useState(null); // {text, at}: start the thread composer with this.
   const bottom = useRef(null);
+  const logRef = useRef(null);
+  const initialScrolled = useRef(false);
+  const pinnedToBottom = useRef(true);
+  const scrollSnapshot = useRef({ height: 0, top: 0, firstId: null });
   // Messages you sent that the server hasn't confirmed yet (#128): shown at
   // once, kept out of messages so they never count as read or unread.
   const [pending, setPending] = useState([]);
   const shownMessages = pending.length ? [...messages, ...pending] : messages;
+  const oldestMsgTime = hasMoreMessages && messages.length ? messages[0].created_at : 0;
+  const visibleActivity = oldestMsgTime ? activity.filter((e) => e.created_at >= oldestMsgTime) : activity;
+  const firstId = messages[0]?.id ?? null;
 
-  useEffect(() => {
-    bottom.current?.scrollIntoView({ block: "nearest" });
-  }, [shownMessages.length, activity.length]);
+  useLayoutEffect(() => {
+    const el = logRef.current;
+    if (!el) return;
+    const prev = scrollSnapshot.current;
+    if (!initialScrolled.current && (shownMessages.length > 0 || visibleActivity.length > 0)) {
+      el.scrollTop = el.scrollHeight;
+      initialScrolled.current = true;
+      pinnedToBottom.current = true;
+    } else if (prev.firstId !== null && firstId !== null && firstId < prev.firstId) {
+      el.scrollTop = prev.top + (el.scrollHeight - prev.height);
+    } else if (pinnedToBottom.current || pending.length > 0) {
+      el.scrollTop = el.scrollHeight;
+    }
+    scrollSnapshot.current = { height: el.scrollHeight, top: el.scrollTop, firstId };
+  }, [shownMessages.length, visibleActivity.length, firstId, pending.length]);
+
+  const onLogScroll = () => {
+    const el = logRef.current;
+    if (!el) return;
+    pinnedToBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    scrollSnapshot.current = { ...scrollSnapshot.current, top: el.scrollTop };
+    if (hasMoreMessages && !loadingOlder && el.scrollTop < 120) {
+      onLoadOlder?.();
+    }
+  };
 
   const byId = new Map(shownMessages.map((m) => [m.id, m]));
   const replies = new Map();
@@ -59,11 +88,19 @@ export default function Chat({ workspaceId, messages, activity = [], updateMessa
     }
   }
   const roots = shownMessages.filter((m) => !m.parent_id || !byId.has(m.parent_id));
-  const log = byTime(roots, activity);
+  const log = byTime(roots, visibleActivity);
   const thread = threadId ? byId.get(threadId) : null;
 
   useOpenShownThread(shown, byId, setThreadId);
   const shownMessage = shown ? byId.get(shown.id) : null;
+  const needsOlderForShown = Boolean(
+    shown &&
+      hasMoreMessages &&
+      (!byId.has(shown.id) || (shownMessage?.parent_id && !byId.has(shownMessage.parent_id))),
+  );
+  useEffect(() => {
+    if (needsOlderForShown && !loadingOlder) onLoadOlder?.();
+  }, [needsOlderForShown, loadingOlder, messages.length]);
   const shownParent = shownMessage?.parent_id && byId.has(shownMessage.parent_id) ? shownMessage.parent_id : null;
   const threadReady = !shownParent || thread?.id === shownParent;
   const flashed = useShowMessage(shown, messages, threadReady);
@@ -150,7 +187,18 @@ export default function Chat({ workspaceId, messages, activity = [], updateMessa
       {error}
       <div className="chat-body" ref={body} style={threadWidth ? { "--thread-width": `${threadWidth}px` } : undefined}>
         <div className="chat-main">
-          <div className="chat-log">
+          <div className="chat-log" ref={logRef} onScroll={onLogScroll}>
+            {hasMoreMessages && (
+              <div className="chat-older-bar" role={loadingOlder ? "status" : undefined}>
+                {loadingOlder ? (
+                  "Loading older messages…"
+                ) : (
+                  <button type="button" className="chat-older-btn" onClick={() => onLoadOlder?.()}>
+                    Load older messages
+                  </button>
+                )}
+              </div>
+            )}
             {roots.length === 0 && <p className="chat-empty">No messages yet. Say hello.</p>}
             {log.map(({ message: m, event }) =>
               event ? (

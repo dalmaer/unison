@@ -158,7 +158,7 @@ Accounts and invites:
   devices remove <id>                stop pushes to one of them
 
 Chat:
-  chat log [--limit N]               recent messages, with threads (marks them
+  chat log [--limit N] [--before ID] recent messages, with threads (marks them
                                      read; up to 1000)
   chat show <message-id>             one message by id
   chat send <text> [--reply-to ID] [--item ID] [--action]
@@ -172,7 +172,8 @@ Chat:
   chat react <message-id> <emoji>    toggle your reaction: 👍 👎 ❤️ 💪 💯 🚀 🎉 😂
                                      (or +1, -1, heart, muscle, 100, rocket,
                                      party, laugh)
-  activity [--limit N]               recent workspace activity (items, joins)
+  activity [--limit N] [--before SEQ]
+                                     recent workspace activity (items, joins)
 
 Images (screenshots to show inline in chat, items and comments):
   image upload <file> [--name N]     upload a PNG, JPEG, GIF or WebP (up to 5 MiB);
@@ -1562,17 +1563,31 @@ func maxMessageSliceID(msgs []store.Message) int64 {
 func (a *app) chatLog(args []string) error {
 	fs := flag.NewFlagSet("chat log", flag.ContinueOnError)
 	limit := fs.Int("limit", 50, "number of recent messages (up to 1000)")
+	before := fs.Int64("before", 0, "return messages before this message id")
 	pos, err := parseFlags(fs, args)
 	if err != nil {
 		return err
 	}
 	if len(pos) != 0 {
-		return fmt.Errorf("%w: chat log [--limit N]", errUsage)
+		return fmt.Errorf("%w: chat log [--limit N] [--before ID]", errUsage)
 	}
 	if *limit <= 0 {
 		return fmt.Errorf("%w: --limit must be positive", errUsage)
 	}
-	path, err := a.wsPath(fmt.Sprintf("/messages?limit=%d", *limit))
+	beforeSet := false
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == "before" {
+			beforeSet = true
+		}
+	})
+	if beforeSet && *before <= 0 {
+		return fmt.Errorf("%w: --before must be positive", errUsage)
+	}
+	q := fmt.Sprintf("/messages?limit=%d", *limit)
+	if *before > 0 {
+		q += fmt.Sprintf("&before=%d", *before)
+	}
+	path, err := a.wsPath(q)
 	if err != nil {
 		return err
 	}

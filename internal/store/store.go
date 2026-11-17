@@ -1050,7 +1050,16 @@ func clampLimit(limit, def, maxLimit int) int {
 // ListMessages returns up to limit of the most recent messages (default 200,
 // clamped to 1000), oldest first.
 func (s *Store) ListMessages(ctx context.Context, wsID string, limit int) ([]Message, error) {
+	return s.ListMessagesBefore(ctx, wsID, 0, limit)
+}
+
+// ListMessagesBefore returns up to limit messages with id < before (or the most
+// recent messages when before <= 0), oldest first.
+func (s *Store) ListMessagesBefore(ctx context.Context, wsID string, before int64, limit int) ([]Message, error) {
 	limit = clampLimit(limit, 200, 1000)
+	if before > 0 {
+		return s.withDetails(ctx, wsID)(scanMessages(s.db.QueryContext(ctx, `SELECT * FROM (`+selectMessages+` WHERE m.workspace_id = ? AND m.id < ? ORDER BY m.id DESC LIMIT ?) AS recent ORDER BY id ASC`, wsID, before, limit)))
+	}
 	return s.withDetails(ctx, wsID)(scanMessages(s.db.QueryContext(ctx, `SELECT * FROM (`+selectMessages+` WHERE m.workspace_id = ? ORDER BY m.id DESC LIMIT ?) AS recent ORDER BY id ASC`, wsID, limit)))
 }
 
@@ -1107,15 +1116,26 @@ var ActivityTypes = []string{"backlog.added", "backlog.assigned", "backlog.start
 // ActivityTypes), oldest first: at most limit of them (default 200, clamped
 // to 1000).
 func (s *Store) RecentActivity(ctx context.Context, wsID string, limit int) ([]Event, error) {
+	return s.RecentActivityBefore(ctx, wsID, 0, limit)
+}
+
+// RecentActivityBefore returns up to limit activity events with seq < before
+// (or the latest events when before <= 0), oldest first.
+func (s *Store) RecentActivityBefore(ctx context.Context, wsID string, before int64, limit int) ([]Event, error) {
 	limit = clampLimit(limit, 200, 1000)
 	args := []any{wsID}
+	where := `workspace_id = ?`
+	if before > 0 {
+		where += ` AND seq < ?`
+		args = append(args, before)
+	}
 	for _, t := range ActivityTypes {
 		args = append(args, t)
 	}
 	args = append(args, limit)
 	marks := strings.TrimSuffix(strings.Repeat("?, ", len(ActivityTypes)), ", ")
 	rows, err := s.db.QueryContext(ctx, `SELECT seq, workspace_id, type, COALESCE(actor_id, 0), data, created_at FROM events
-		WHERE workspace_id = ? AND type IN (`+marks+`) ORDER BY seq DESC LIMIT ?`, args...)
+		WHERE `+where+` AND type IN (`+marks+`) ORDER BY seq DESC LIMIT ?`, args...)
 	if err != nil {
 		return nil, err
 	}

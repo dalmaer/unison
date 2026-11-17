@@ -721,9 +721,26 @@ func (s *Server) listParticipants(w http.ResponseWriter, r *http.Request) {
 
 // ---- Chat ----
 
+func parseBeforeParam(r *http.Request) (int64, bool) {
+	raw := r.URL.Query().Get("before")
+	if raw == "" {
+		return 0, true
+	}
+	v, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || v <= 0 {
+		return 0, false
+	}
+	return v, true
+}
+
 func (s *Server) listMessages(w http.ResponseWriter, r *http.Request) {
+	before, ok := parseBeforeParam(r)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "before must be a positive integer")
+		return
+	}
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-	list, err := s.store.ListMessages(r.Context(), r.PathValue("ws"), limit)
+	list, err := s.store.ListMessagesBefore(r.Context(), r.PathValue("ws"), before, limit)
 	s.respond(w, http.StatusOK, list, nil, err)
 }
 
@@ -1087,8 +1104,13 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 // closed, reopened; people joining and leaving), oldest first, for the
 // one-line updates in chat (#93).
 func (s *Server) listActivity(w http.ResponseWriter, r *http.Request) {
+	before, ok := parseBeforeParam(r)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "before must be a positive integer")
+		return
+	}
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-	evs, err := s.store.RecentActivity(r.Context(), r.PathValue("ws"), limit)
+	evs, err := s.store.RecentActivityBefore(r.Context(), r.PathValue("ws"), before, limit)
 	s.respond(w, http.StatusOK, evs, nil, err)
 }
 

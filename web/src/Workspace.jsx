@@ -29,6 +29,8 @@ import { ShortcutsDialog, isEditableTarget, shouldIgnoreShortcut } from "./short
 
 const ACTIVE_WINDOW_MS = 2 * 60 * 1000;
 const DORMANT_WINDOW_MS = 15 * 60 * 1000;
+const CHAT_PAGE = 50;
+const ACTIVITY_PAGE = 200;
 // Agents not seen this long drop off the roster (#125); they're still
 // participants (chat and the backlog show their names).
 const AGENT_GONE_MS = 24 * 60 * 60 * 1000;
@@ -157,7 +159,10 @@ export default function Workspace({ id, view, navigate, account }) {
   const [me, setMe] = useState(null);
   const [participants, setParticipants] = useState([]);
   const [messages, setMessages] = useState([]);
+  const [hasMoreMessages, setHasMoreMessages] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
   const [activity, setActivity] = useState([]);
+  const [hasMoreActivity, setHasMoreActivity] = useState(false);
   const [backlog, setBacklog] = useState([]);
   const [webhooks, setWebhooks] = useState([]);
   const [schedules, setSchedules] = useState([]);
@@ -207,8 +212,30 @@ export default function Workspace({ id, view, navigate, account }) {
   const loaders = {
     workspace: () => call("GET").then(setWorkspace),
     participants: () => call("GET", "/participants").then(setParticipants),
-    messages: () => call("GET", "/messages?limit=500").then(setMessages),
-    activity: () => call("GET", "/activity").then(setActivity),
+    messages: () =>
+      call("GET", `/messages?limit=${CHAT_PAGE}`).then((fresh) => {
+        const prev = messagesNow.current;
+        const hasOlder = prev.length > 0 && fresh.length > 0 && prev[0].id < fresh[0].id;
+        setMessages((cur) => {
+          if (!cur.length || !fresh.length) return fresh;
+          const firstFresh = fresh[0].id;
+          const older = cur.filter((m) => m.id < firstFresh);
+          return older.length ? [...older, ...fresh] : fresh;
+        });
+        if (!hasOlder) setHasMoreMessages(fresh.length >= CHAT_PAGE);
+      }),
+    activity: () =>
+      call("GET", `/activity?limit=${ACTIVITY_PAGE}`).then((fresh) => {
+        const prev = activityNow.current;
+        const hasOlder = prev.length > 0 && fresh.length > 0 && prev[0].seq < fresh[0].seq;
+        setActivity((cur) => {
+          if (!cur.length || !fresh.length) return fresh;
+          const firstFresh = fresh[0].seq;
+          const older = cur.filter((e) => e.seq < firstFresh);
+          return older.length ? [...older, ...fresh] : fresh;
+        });
+        if (!hasOlder) setHasMoreActivity(fresh.length >= ACTIVITY_PAGE);
+      }),
     // Everything, done items included: on load and after a reconnect only.
     backlog: () => call("GET", "/backlog?status=all").then(setBacklog),
     // Open and assigned items, after events that renumber them (#105).
@@ -271,6 +298,8 @@ export default function Workspace({ id, view, navigate, account }) {
   useEffect(() => {
     if (!account.ready) return;
     setGate(null);
+    setHasMoreMessages(false);
+    setHasMoreActivity(false);
     loadAll();
   }, [id, token, account.ready, joins]);
 
@@ -278,10 +307,61 @@ export default function Workspace({ id, view, navigate, account }) {
   // events refresh the collection they touch. After a dropped connection
   // everything is reloaded, since events may have been missed. Holding the
   // stream open also keeps us present in the roster.
+  const loadingOlderRef = useRef(false);
+  const hasMoreActivityRef = useRef(hasMoreActivity);
+  hasMoreActivityRef.current = hasMoreActivity;
+  const activityNow = useRef(activity);
+  activityNow.current = activity;
   const messagesNow = useRef(messages);
   messagesNow.current = messages;
   const meNow = useRef(me);
   meNow.current = me;
+
+  const loadOlderMessages = async () => {
+    if (loadingOlderRef.current || !messagesNow.current.length) return false;
+    loadingOlderRef.current = true;
+    setLoadingOlder(true);
+    try {
+      const oldestId = messagesNow.current[0].id;
+      const older = await call("GET", `/messages?limit=${CHAT_PAGE}&before=${oldestId}`);
+      if (older.length > 0) {
+        setMessages((cur) => {
+          const seen = new Set(cur.map((m) => m.id));
+          const fresh = older.filter((m) => !seen.has(m.id));
+          return fresh.length ? [...fresh, ...cur] : cur;
+        });
+        const oldestTime = older[0].created_at;
+        let moreAct = hasMoreActivityRef.current;
+        let actBefore = activityNow.current[0]?.seq;
+        let actOldestTime = activityNow.current[0]?.created_at ?? Infinity;
+        for (let page = 0; page < 5 && moreAct && actBefore && actOldestTime > oldestTime; page++) {
+          const olderAct = await call("GET", `/activity?limit=${ACTIVITY_PAGE}&before=${actBefore}`);
+          if (olderAct.length === 0) {
+            moreAct = false;
+            setHasMoreActivity(false);
+            break;
+          }
+          setActivity((cur) => {
+            const seen = new Set(cur.map((e) => e.seq));
+            const fresh = olderAct.filter((e) => !seen.has(e.seq));
+            return fresh.length ? [...fresh, ...cur] : cur;
+          });
+          actBefore = olderAct[0].seq;
+          actOldestTime = olderAct[0].created_at;
+          moreAct = olderAct.length >= ACTIVITY_PAGE;
+          setHasMoreActivity(moreAct);
+        }
+      }
+      setHasMoreMessages(older.length >= CHAT_PAGE);
+      return older.length > 0;
+    } catch (e) {
+      refused(e);
+      return false;
+    } finally {
+      loadingOlderRef.current = false;
+      setLoadingOlder(false);
+    }
+  };
   // Item events carry the item (comment events too, as data.item).
   const applyItemEvent = ({ type, data }) => {
     if (type === "backlog.deleted" && data?.id) return setBacklog((list) => list.filter((it) => it.id !== data.id));
@@ -471,6 +551,9 @@ export default function Workspace({ id, view, navigate, account }) {
               call={call}
               onError={setError}
               shown={shownMessage}
+              hasMoreMessages={hasMoreMessages}
+              loadingOlder={loadingOlder}
+              onLoadOlder={loadOlderMessages}
               head={headExtras}
               error={errorBar}
             />
