@@ -95,15 +95,15 @@ func TestActivityCLI(t *testing.T) {
 	}
 
 	// Usage validation and help docs.
-	for _, bad := range [][]string{{"activity", "extra"}, {"activity", "--limit", "0"}, {"activity", "--limit", "-5"}} {
+	for _, bad := range [][]string{{"activity", "extra"}, {"activity", "--limit", "0"}, {"activity", "--limit", "-5"}, {"activity", "--before", "0"}} {
 		if _, _, code := e.run(agentDir, bad...); code == 0 {
 			t.Errorf("unison %v succeeded, want non-zero exit", bad)
 		}
 	}
-	if help := e.ok(agentDir, "help"); !strings.Contains(help, "activity [--limit N]") {
+	if help := e.ok(agentDir, "help"); !strings.Contains(help, "activity [--limit N] [--before SEQ]") {
 		t.Errorf("help lacks activity command:\n%s", help)
 	}
-	if guide := e.ok(agentDir, "--agent-help"); !strings.Contains(guide, "`unison activity [--limit N]`") {
+	if guide := e.ok(agentDir, "--agent-help"); !strings.Contains(guide, "`unison activity [--limit N] [--before SEQ]`") {
 		t.Errorf("agent-help lacks activity command:\n%s", guide)
 	}
 }

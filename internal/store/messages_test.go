@@ -212,3 +212,35 @@ func TestMessagesAfter(t *testing.T) {
 		t.Errorf("MessagesAfter in another workspace = %+v, %v", msgs, err)
 	}
 }
+
+// TestListMessagesBefore: cursor-based upward pagination returns messages
+// strictly before `before`, ordered oldest first, bounded by limit.
+func TestListMessagesBefore(t *testing.T) {
+	s, _, alex, _ := setup(t)
+	ctx := context.Background()
+	var ids []int64
+	for _, body := range []string{"m1", "m2", "m3", "m4", "m5"} {
+		m, _, err := s.PostMessage(ctx, alex, body, nil, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, m.ID)
+	}
+
+	page1, err := s.ListMessagesBefore(ctx, alex.WorkspaceID, 0, 2)
+	if err != nil || len(page1) != 2 || page1[0].ID != ids[3] || page1[1].ID != ids[4] {
+		t.Fatalf("page1 = %+v, %v; want [%d %d]", page1, err, ids[3], ids[4])
+	}
+	page2, err := s.ListMessagesBefore(ctx, alex.WorkspaceID, page1[0].ID, 2)
+	if err != nil || len(page2) != 2 || page2[0].ID != ids[1] || page2[1].ID != ids[2] {
+		t.Fatalf("page2 = %+v, %v; want [%d %d]", page2, err, ids[1], ids[2])
+	}
+	page3, err := s.ListMessagesBefore(ctx, alex.WorkspaceID, page2[0].ID, 2)
+	if err != nil || len(page3) != 1 || page3[0].ID != ids[0] {
+		t.Fatalf("page3 = %+v, %v; want [%d]", page3, err, ids[0])
+	}
+	page4, err := s.ListMessagesBefore(ctx, alex.WorkspaceID, page3[0].ID, 2)
+	if err != nil || len(page4) != 0 {
+		t.Fatalf("page4 = %+v, %v; want []", page4, err)
+	}
+}

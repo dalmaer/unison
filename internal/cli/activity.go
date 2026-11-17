@@ -15,18 +15,32 @@ import (
 func (a *app) activity(args []string) error {
 	fs := flag.NewFlagSet("activity", flag.ContinueOnError)
 	limit := fs.Int("limit", 200, "maximum number of recent activity events")
+	before := fs.Int64("before", 0, "return activity events before this seq")
 	pos, err := parseFlags(fs, args)
 	if err != nil {
 		return err
 	}
 	if len(pos) != 0 {
-		return fmt.Errorf("%w: activity [--limit N]", errUsage)
+		return fmt.Errorf("%w: activity [--limit N] [--before SEQ]", errUsage)
 	}
 	if *limit <= 0 {
 		return fmt.Errorf("%w: --limit must be positive", errUsage)
 	}
+	beforeSet := false
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == "before" {
+			beforeSet = true
+		}
+	})
+	if beforeSet && *before <= 0 {
+		return fmt.Errorf("%w: --before must be positive", errUsage)
+	}
+	q := fmt.Sprintf("/activity?limit=%d", *limit)
+	if *before > 0 {
+		q += fmt.Sprintf("&before=%d", *before)
+	}
 	var evs []store.Event
-	if ok, err := a.call("GET", fmt.Sprintf("/activity?limit=%d", *limit), nil, &evs, false); !ok {
+	if ok, err := a.call("GET", q, nil, &evs, false); !ok {
 		return err
 	}
 	if len(evs) == 0 {

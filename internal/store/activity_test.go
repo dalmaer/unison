@@ -146,3 +146,30 @@ func TestWorkspaceActivitySeq(t *testing.T) {
 		t.Errorf("GetWorkspace activity = %d, %v", got.ActivitySeq, err)
 	}
 }
+
+func TestRecentActivityBefore(t *testing.T) {
+	s, _, alex, _ := setup(t)
+	ctx := context.Background()
+	for _, title := range []string{"One", "Two", "Three", "Four"} {
+		if _, _, err := s.AddItem(ctx, alex, title, "", 0); err != nil {
+			t.Fatal(err)
+		}
+	}
+	page1, err := s.RecentActivityBefore(ctx, alex.WorkspaceID, 0, 2)
+	if err != nil || len(page1) != 2 || page1[0].Seq >= page1[1].Seq {
+		t.Fatalf("page1 = %+v, %v", page1, err)
+	}
+	page2, err := s.RecentActivityBefore(ctx, alex.WorkspaceID, page1[0].Seq, 2)
+	if err != nil || len(page2) != 2 || page2[1].Seq >= page1[0].Seq {
+		t.Fatalf("page2 = %+v, %v", page2, err)
+	}
+	empty, err := s.RecentActivityBefore(ctx, alex.WorkspaceID, page2[0].Seq, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range empty {
+		if e.Seq >= page2[0].Seq {
+			t.Errorf("got seq %d >= %d", e.Seq, page2[0].Seq)
+		}
+	}
+}

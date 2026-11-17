@@ -115,3 +115,37 @@ func countType(evs []store.Event, typ string) int {
 	}
 	return n
 }
+
+func TestMessagesAndActivityBeforeParam(t *testing.T) {
+	ts, st := newServer(t)
+	ws, _, _ := st.CreateWorkspace(t.Context(), "W", "", "")
+	_, ada, _, _ := joinMember(t, st, ws.ID, "Ada", "")
+	api := ts.URL + "/api/workspaces/" + ws.ID
+
+	var msgIDs []int
+	for _, body := range []string{"m1", "m2", "m3"} {
+		_, m := call(t, "POST", api+"/messages", ada, `{"body":"`+body+`"}`)
+		msgIDs = append(msgIDs, int(m["id"].(float64)))
+	}
+	for _, title := range []string{"i1", "i2", "i3"} {
+		call(t, "POST", api+"/backlog", ada, `{"title":"`+title+`"}`)
+	}
+
+	status, body := getAs(t, api+"/messages?limit=2&before="+strconv.Itoa(msgIDs[2]), ada)
+	if status != http.StatusOK || !strings.Contains(body, `"m1"`) || !strings.Contains(body, `"m2"`) || strings.Contains(body, `"m3"`) {
+		t.Errorf("GET /messages?before = %d %s", status, body)
+	}
+	for _, bad := range []string{"0", "-1", "abc"} {
+		if status, _ := getAs(t, api+"/messages?before="+bad, ada); status != http.StatusBadRequest {
+			t.Errorf("GET /messages?before=%s = %d, want 400", bad, status)
+		}
+		if status, _ := getAs(t, api+"/activity?before="+bad, ada); status != http.StatusBadRequest {
+			t.Errorf("GET /activity?before=%s = %d, want 400", bad, status)
+		}
+	}
+
+	status, actBody := getAs(t, api+"/activity?limit=2", ada)
+	if status != http.StatusOK || !strings.Contains(actBody, `"i2"`) || !strings.Contains(actBody, `"i3"`) {
+		t.Fatalf("GET /activity?limit=2 = %d %s", status, actBody)
+	}
+}
