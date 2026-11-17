@@ -2196,6 +2196,29 @@ html.resizing * {
   color: var(--text-muted);
 }
 
+.chat-older-bar {
+  display: flex;
+  justify-content: center;
+  padding: var(--space-xs) var(--space-m);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+.chat-older-btn {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-muted);
+  border-radius: var(--radius-s);
+  padding: 4px 10px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.chat-older-btn:hover {
+  color: var(--text);
+  border-color: var(--text-muted);
+}
+
 .msg {
   position: relative;
   display: grid;

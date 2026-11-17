@@ -3,6 +3,7 @@ package cli
 import (
 	"encoding/json"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -169,9 +170,21 @@ func TestChatShowCLI(t *testing.T) {
 	if _, errOut, code := e.run(agent, "chat", "show", "9999"); code == 0 || !strings.Contains(errOut, "not found") {
 		t.Errorf("chat show missing id: exit %d, stderr %q", code, errOut)
 	}
-	for _, bad := range [][]string{{"chat", "show"}, {"chat", "show", "1", "2"}, {"chat", "log", "1"}, {"chat", "log", "--limit", "0"}} {
+	for _, bad := range [][]string{{"chat", "show"}, {"chat", "show", "1", "2"}, {"chat", "log", "1"}, {"chat", "log", "--limit", "0"}, {"chat", "log", "--before", "0"}} {
 		if _, _, code := e.run(agent, bad...); code == 0 {
 			t.Errorf("unison %v succeeded, want usage error", bad)
 		}
+	}
+
+	var all []store.Message
+	if err := json.Unmarshal([]byte(e.ok(agent, "chat", "log", "--json")), &all); err != nil || len(all) < 2 {
+		t.Fatalf("chat log --json = %v, %v", all, err)
+	}
+	var older []store.Message
+	if err := json.Unmarshal([]byte(e.ok(agent, "chat", "log", "--before", strconv.Itoa(int(all[len(all)-1].ID)), "--json")), &older); err != nil {
+		t.Fatal(err)
+	}
+	if len(older) != len(all)-1 {
+		t.Errorf("chat log --before returned %d messages, want %d", len(older), len(all)-1)
 	}
 }
