@@ -4132,6 +4132,12 @@ html.reordering * {
   box-shadow: 0 0 0 var(--border-s) var(--panel-edge), var(--panel-shadow);
 }
 
+.shell.hero-preview-shell {
+  height: 520px;
+  pointer-events: none;
+  user-select: none;
+}
+
 .shot {
   display: block;
   width: 100%;
