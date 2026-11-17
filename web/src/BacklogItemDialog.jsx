@@ -7,7 +7,7 @@ import { RecurringMarker } from "./Recurring.jsx";
 import Button from "./ui/Button.jsx";
 import Dialog from "./ui/Dialog.jsx";
 import Field from "./ui/Field.jsx";
-import { ImageTextarea } from "./images.jsx";
+import { MentionTextarea } from "./mentions.jsx";
 import { Input, Select } from "./ui/Input.jsx";
 
 // NewItemDialog writes a backlog item: a title, description, and optional
@@ -29,7 +29,7 @@ export function NewItemDialog({ initial, participants = [], onClose, onCreate })
           <Input required data-autofocus value={title} onChange={(e) => setTitle(e.target.value)} placeholder="What needs doing?" />
         </Field>
         <Field label="Description">
-          <ImageTextarea rows={10} value={body} onChange={(e) => setBody(e.target.value)} placeholder="Details, acceptance criteria, links, screenshots… (Markdown)" />
+          <MentionTextarea rows={10} value={body} onChange={(e) => setBody(e.target.value)} placeholder="Details, acceptance criteria, links, screenshots… (Markdown)" />
         </Field>
         <Field label="Assignee">
           <Select value={assigneeId} onChange={(e) => setAssigneeId(Number(e.target.value))}>
@@ -107,7 +107,7 @@ function EditForm({ item, path, run, onDone }) {
         <Input required autoFocus value={title} onChange={(e) => setTitle(e.target.value)} />
       </Field>
       <Field label="Description">
-        <ImageTextarea rows={10} value={body} onChange={(e) => setBody(e.target.value)} />
+        <MentionTextarea rows={10} value={body} onChange={(e) => setBody(e.target.value)} />
       </Field>
       <div className="actions-row dialog-actions">
         <Button type="button" variant="ghost" onClick={onDone}>
@@ -391,7 +391,7 @@ function Comments({ item, path, participants, me, call, run }) {
         </div>
       ))}
       <form className="detail-form comment-form" onSubmit={send} onKeyDown={submitOnModEnter}>
-        <ImageTextarea
+        <MentionTextarea
           rows={2}
           aria-label="Comment"
           value={text}
