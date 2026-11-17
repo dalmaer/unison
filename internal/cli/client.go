@@ -87,9 +87,10 @@ func (c *Config) save() error {
 
 // client talks to the Unison HTTP API.
 type client struct {
-	server string
-	token  string
-	http   *http.Client
+	server    string
+	token     string
+	http      *http.Client
+	onVersion func(string)
 }
 
 // apiError is an error response from the server.
@@ -171,6 +172,9 @@ func (c *client) send(method, path, contentType string, body io.Reader) ([]byte,
 		return nil, &transportError{server: c.server, err: err}
 	}
 	defer resp.Body.Close()
+	if v := resp.Header.Get("X-Unison-Version"); v != "" && c.onVersion != nil {
+		c.onVersion(v)
+	}
 	raw, err := io.ReadAll(resp.Body)
 	if err != nil {
 		// Cut off mid-answer: as good as no answer.

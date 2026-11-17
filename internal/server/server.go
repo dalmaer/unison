@@ -54,6 +54,15 @@ type Server struct {
 	reviews reviewCache
 	// reviewFails slows down guessing the App Review code (review.go).
 	reviewFails reviewLimiter
+
+	version string
+}
+
+// SetVersion sets the build version advertised by X-Unison-Version and /api/version.
+func (s *Server) SetVersion(v string) { s.version = v }
+
+func isStampedVersion(v string) bool {
+	return v != "" && v != "dev" && !strings.HasPrefix(v, "dev-")
 }
 
 // New returns a Server backed by st. web holds the built UI (index.html at
@@ -66,8 +75,50 @@ func New(st *store.Store, web fs.FS) *Server {
 	return s
 }
 
+// statusClientClosedRequest is the non-standard HTTP status for a client
+// disconnecting before the server finishes (#320).
+const statusClientClosedRequest = 499
+
+const slowRequestThreshold = 2 * time.Second
+
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+func (r *statusRecorder) WriteHeader(code int) {
+	r.status = code
+	r.ResponseWriter.WriteHeader(code)
+}
+
+func (r *statusRecorder) Flush() {
+	if f, ok := r.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
+func (r *statusRecorder) Unwrap() http.ResponseWriter { return r.ResponseWriter }
+
 // ServeHTTP implements http.Handler.
-func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) { s.mux.ServeHTTP(w, r) }
+func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if isStampedVersion(s.version) && strings.HasPrefix(r.URL.Path, "/api/") {
+		w.Header().Set("X-Unison-Version", s.version)
+	}
+	start := time.Now()
+	rw := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+	s.mux.ServeHTTP(rw, r)
+	dur := time.Since(start)
+	route := r.Pattern
+	if route == "" {
+		route = r.URL.Path
+	}
+	longPoll := strings.HasSuffix(r.URL.Path, "/events") || strings.HasSuffix(r.URL.Path, "/stream")
+	if rw.status >= 500 {
+		log.Printf("WARN %s %s status=%d dur=%s", r.Method, route, rw.status, dur.Round(time.Millisecond))
+	} else if !longPoll && dur > slowRequestThreshold {
+		log.Printf("WARN slow %s %s status=%d dur=%s", r.Method, route, rw.status, dur.Round(time.Millisecond))
+	}
+}
 
 // RunLeaseSweeper releases expired backlog leases every interval until ctx
 // is done, so clients watching the stream see items return to the queue. It
@@ -82,18 +133,31 @@ func (s *Server) RunLeaseSweeper(ctx context.Context, interval time.Duration) {
 			return
 		case <-t.C:
 			evs, err := s.store.ExpireLeases(ctx)
-			if err != nil {
+			if err != nil && !errors.Is(err, context.Canceled) {
 				log.Printf("lease sweeper: %v", err)
 			}
 			s.published(evs)
 			// Due recurring tasks become backlog items on the same tick (#112).
 			evs, err = s.store.MaterializeSchedules(ctx)
-			if err != nil {
+			if err != nil && !errors.Is(err, context.Canceled) {
 				log.Printf("schedule sweeper: %v", err)
+			}
+			if n := countEventType(evs, "backlog.added"); n > 0 {
+				log.Printf("INFO materialized %d scheduled backlog item(s)", n)
 			}
 			s.published(evs)
 		}
 	}
+}
+
+func countEventType(evs []store.Event, typ string) int {
+	n := 0
+	for _, e := range evs {
+		if e.Type == typ {
+			n++
+		}
+	}
+	return n
 }
 
 func (s *Server) routes() {
@@ -104,6 +168,7 @@ func (s *Server) routes() {
 	// Counts only, for the landing page: no sign-in (#301). The literal path
 	// wins over {ws} below, and no workspace id is ever "stats".
 	m.HandleFunc("GET /api/workspaces/stats", s.workspaceStats)
+	m.HandleFunc("GET /api/version", s.getVersion)
 	// Everything under a workspace goes through the gate (gate.go)...
 	m.Handle(ws, s.gate(s.ws))
 	m.Handle(ws+"/", s.gate(s.ws))
@@ -246,7 +311,7 @@ func (s *Server) touch(ctx context.Context, p *store.Participant) {
 	if time.Since(time.UnixMilli(p.LastSeenAt)) < 5*time.Second {
 		return
 	}
-	if err := s.store.Touch(ctx, p.ID); err != nil {
+	if err := s.store.Touch(ctx, p.ID); err != nil && !errors.Is(err, context.Canceled) {
 		log.Printf("touch participant %d: %v", p.ID, err)
 	}
 }
@@ -263,7 +328,7 @@ func (s *Server) markActive(r *http.Request, p *store.Participant) {
 	if !countsAsActivity(r) {
 		return
 	}
-	if err := s.store.MarkActive(r.Context(), p); err != nil {
+	if err := s.store.MarkActive(r.Context(), p); err != nil && !errors.Is(err, context.Canceled) {
 		log.Printf("mark participant %d active: %v", p.ID, err)
 	}
 }
@@ -292,6 +357,8 @@ func storeError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, store.ErrForbidden):
 		writeError(w, http.StatusForbidden, err.Error())
+	case errors.Is(err, context.Canceled):
+		writeError(w, statusClientClosedRequest, "client closed request")
 	default:
 		log.Printf("internal error: %v", err)
 		writeError(w, http.StatusInternalServerError, "internal error")
@@ -1102,4 +1169,12 @@ func (s *Server) serveWeb(w http.ResponseWriter, r *http.Request) {
 	}
 	// Single-page app: every other path renders index.html.
 	http.ServeFileFS(w, r, s.web, "index.html")
+}
+
+func (s *Server) getVersion(w http.ResponseWriter, r *http.Request) {
+	v := s.version
+	if v == "" {
+		v = "dev"
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"version": v})
 }

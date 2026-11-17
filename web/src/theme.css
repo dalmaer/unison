@@ -464,11 +464,14 @@ textarea.control {
   position: relative;
   display: inline-flex;
   align-items: center;
+  width: fit-content;
+  max-width: 100%;
 }
 
 .select > select.control {
   appearance: none;
   width: auto;
+  max-width: 100%;
   height: 28px;
   padding: 0 calc(var(--space-xs) + 16px) 0 var(--space-xs);
   background: var(--panel);
@@ -729,6 +732,42 @@ html.dialog-open {
 }
 
 /* ---- Theme switch (ui/ThemeSwitch.jsx) ---- */
+.theme-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+  width: 82px;
+  height: 30px;
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--panel-edge);
+}
+
+.theme-switch button {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.theme-switch button .lucide {
+  width: 14px;
+  height: 14px;
+}
+
+.theme-switch button[aria-pressed="true"] {
+  background: var(--panel);
+  color: var(--text);
+  box-shadow: var(--control-shadow);
+}
+
 .seg {
   display: inline-flex;
   padding: 2px;
@@ -1303,9 +1342,15 @@ button.nav-link {
   flex-shrink: 0;
 }
 
-.sidebar-foot > .seg {
-  align-self: flex-start;
-  margin: var(--space-xxs) 10px;
+.sidebar-foot-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.sidebar-foot-row .popover-anchor {
+  flex: 1;
+  min-width: 0;
 }
 
 .sidebar-foot .popover-anchor {
@@ -1690,6 +1735,11 @@ a.ws-mark:hover {
   font-variant-numeric: tabular-nums;
 }
 
+.row .item-id {
+  min-width: 34px;
+  flex-shrink: 0;
+}
+
 .chip {
   padding: 0 6px;
   border-radius: var(--radius-full);
@@ -1776,10 +1826,22 @@ button.group-head {
   color: var(--text-muted);
 }
 
-.meta {
+.meta,
+.item-reporter {
+  flex: none;
   color: var(--text-muted);
   font-size: var(--size-xs);
   white-space: nowrap;
+}
+
+.row .chip,
+.row .comment-count {
+  flex: none;
+}
+
+.row-close-note {
+  font-weight: var(--weight-ui-regular);
+  color: var(--text-muted);
 }
 
 .row-actions {
@@ -1847,11 +1909,6 @@ button.group-head {
 .schedule-when {
   display: flex;
   gap: var(--space-l);
-}
-
-/* Compact selects, like the item dialog's "Assign to…". */
-.schedule-when .select {
-  width: fit-content;
 }
 
 /* ---- Chat (Chat.jsx): a screen, aligned with the backlog ---- */
@@ -2343,17 +2400,19 @@ html.resizing * {
   white-space: nowrap;
 }
 
-/* A message's actions (reply, reactions) float over its top-right corner
-   on hover or focus; on touch screens the "…" button shows them. */
+/* A message's actions (reply, reactions) sit in the empty right side of its
+   author/timestamp header line so they never cover message body text (#323);
+   on touch screens the "…" button shows them. */
 .msg-actions {
   position: absolute;
-  top: -6px;
+  top: 5px;
   right: var(--space-s);
   z-index: 1;
   display: none;
   align-items: center;
   gap: 2px;
-  padding: 2px;
+  height: 20px;
+  padding: 1px;
   border-radius: var(--radius-s);
   background: var(--panel);
   box-shadow: 0 0 0 var(--border-s) var(--panel-edge), var(--panel-shadow);
@@ -2366,21 +2425,27 @@ html.resizing * {
   display: inline-flex;
 }
 
+/* Hide hover toolbars while actively pressing/selecting message text (#323). */
+.msg:active:not(:has(.msg-actions:active)) > .msg-actions {
+  display: none;
+}
+
 .msg-action.button {
-  height: 26px;
-  padding: 0 6px;
+  height: 18px;
+  padding: 0 5px;
+  font-size: var(--size-xxs);
 }
 
 .msg-emoji {
   display: grid;
   place-items: center;
-  width: 28px;
-  height: 26px;
+  width: 22px;
+  height: 18px;
   padding: 0;
   border: 0;
   border-radius: var(--radius-s);
   background: none;
-  font-size: 15px;
+  font-size: 13px;
   line-height: 1;
   cursor: pointer;
 }
@@ -2502,6 +2567,11 @@ html.resizing * {
 
 .thread-replies .msg:hover {
   background: none;
+}
+
+.thread-replies .msg > .msg-actions {
+  top: 1px;
+  right: 0;
 }
 
 .composer {
@@ -3572,6 +3642,10 @@ html.reordering * {
     scroll-snap-align: start;
   }
 
+  .theme-switch {
+    display: none;
+  }
+
   .theme-cycle {
     display: inline-flex;
   }
@@ -3617,7 +3691,7 @@ html.reordering * {
   font-weight: var(--weight-ui-regular);
 }
 
-.account-trigger.button {
+.account-trigger.button.button-icon {
   padding: 0;
 }
 
@@ -4471,7 +4545,8 @@ html.reordering * {
     max-width: none;
   }
 
-  .account-menu .seg {
+  .account-menu .seg,
+  .account-menu .theme-switch {
     display: inline-flex;
   }
 

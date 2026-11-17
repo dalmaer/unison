@@ -137,9 +137,10 @@ Accounts and invites:
   invite revoke <id>                 stop an invite
   members                            the workspace's members (accounts) and their
                                      participants
-  members remove <user-id>           remove a member (any member may; their
-                                     participants stay, for history; their agents
-                                     stop working)
+  members remove <user-id>           remove a member (owner removes anyone else;
+                                     others may only remove themselves to leave;
+                                     their participants stay, for history; their
+                                     agents stop working)
   pass [--name N] [--emoji E] [--model M]
                                      mint a single-use agent pass (15 minutes) and
                                      print the invite prompt to paste into an agent;
@@ -167,8 +168,9 @@ Chat:
                                      act (review a PR, answer, set something up)
   chat read [<message-id>]           mark chat read up to a message (default: the
                                      newest); --show prints how far you've read
-  chat react <message-id> <emoji>    toggle your reaction: 👍 👎 ❤️ 💪 💯 (or +1,
-                                     -1, heart, muscle, 100)
+  chat react <message-id> <emoji>    toggle your reaction: 👍 👎 ❤️ 💪 💯 🚀 🎉 😂
+                                     (or +1, -1, heart, muscle, 100, rocket,
+                                     party, laugh)
   activity [--limit N]               recent workspace activity (items, joins)
 
 Images (screenshots to show inline in chat, items and comments):
@@ -256,13 +258,16 @@ Environment: UNISON_SERVER, UNISON_WORKSPACE, UNISON_TOKEN, UNISON_CONFIG,
 `
 
 type app struct {
-	out     io.Writer
-	errOut  io.Writer // progress and warnings; never the result
-	cfg     *Config
-	jsonOut bool
-	server  string
-	ws      string
-	token   string
+	out              io.Writer
+	errOut           io.Writer // progress and warnings; never the result
+	cfg              *Config
+	jsonOut          bool
+	server           string
+	serverExplicit   bool
+	ws               string
+	token            string
+	versionChecked   bool
+	forceVersionWarn bool
 }
 
 // Run executes the unison command with args (excluding the program name)
@@ -306,6 +311,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 	if a.cfg, err = loadConfig(configPath); err != nil {
 		return err
 	}
+	a.serverExplicit = firstNonEmpty(a.server, os.Getenv("UNISON_SERVER"), a.cfg.Server) != ""
 	a.server = firstNonEmpty(a.server, os.Getenv("UNISON_SERVER"), a.cfg.Server, DefaultServer)
 	a.ws = firstNonEmpty(a.ws, os.Getenv("UNISON_WORKSPACE"), a.cfg.Workspace)
 	a.token = firstNonEmpty(a.token, os.Getenv("UNISON_TOKEN"), a.cfg.Token)
@@ -447,7 +453,13 @@ func firstNonEmpty(vals ...string) string {
 // client calls the API as the participant joined here, or else as the
 // signed-in account (`unison login`), e.g. to read a workspace you're a
 // member of without having joined from this directory.
-func (a *app) client() *client { return newClient(a.server, firstNonEmpty(a.token, a.userToken())) }
+func (a *app) client() *client { return a.clientWithToken(firstNonEmpty(a.token, a.userToken())) }
+
+func (a *app) clientWithToken(token string) *client {
+	c := newClient(a.server, token)
+	c.onVersion = a.checkServerVersion
+	return c
+}
 
 // wsPath returns the API path for the current workspace.
 func (a *app) wsPath(suffix string) (string, error) {
@@ -521,6 +533,7 @@ func serve(args []string) error {
 	}
 	defer st.Close()
 	srv := server.New(st, webui.FS())
+	srv.SetVersion(buildVersion())
 	auth := server.AuthConfigFromEnv()
 	srv.SetAuth(auth)
 	if err := setupPush(srv); err != nil {
@@ -675,7 +688,7 @@ func (a *app) workspaceStats(args []string) error {
 		return fmt.Errorf("%w: workspace stats takes no arguments", errUsage)
 	}
 	var raw json.RawMessage
-	if err := newClient(a.server, "").do("GET", "/api/workspaces/stats", nil, &raw); err != nil {
+	if err := a.clientWithToken("").do("GET", "/api/workspaces/stats", nil, &raw); err != nil {
 		return err
 	}
 	if a.jsonOut {
@@ -1652,7 +1665,7 @@ func reactionSummary(m store.Message) string {
 // back if you already reacted with that emoji.
 func (a *app) chatReact(args []string) error {
 	if len(args) != 2 {
-		return fmt.Errorf("%w: chat react <message-id> <emoji> (%s, or +1 -1 heart muscle 100)", errUsage, strings.Join(store.ReactionEmoji, " "))
+		return fmt.Errorf("%w: chat react <message-id> <emoji> (%s, or %s)", errUsage, strings.Join(store.ReactionEmoji, " "), strings.Join(store.ReactionShortNames, " "))
 	}
 	id, err := parseID(args[0])
 	if err != nil {
@@ -1894,7 +1907,7 @@ func itemLine(people map[int64]store.Participant, it *store.Item) string {
 	if it.Status != store.StatusDone {
 		pos = fmt.Sprintf("%d.", it.Position)
 	}
-	return fmt.Sprintf("%-4s #%-4d %-40s %s", pos, it.ID, it.Title, itemState(people, it))
+	return fmt.Sprintf("%-4s #%-4d %-40s %s  by %s", pos, it.ID, it.Title, itemState(people, it), label(people, it.CreatedBy))
 }
 
 func itemState(people map[int64]store.Participant, it *store.Item) string {
@@ -2404,6 +2417,7 @@ func (a *app) wait(args []string) error {
 	if err != nil {
 		return err
 	}
+	a.forceVersionWarn = true
 	c := a.client()
 	// A server that is restarting, or a network that blinks, is waited out
 	// (#317): every read below is retried until --timeout, here and in the

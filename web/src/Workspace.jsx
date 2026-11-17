@@ -373,6 +373,7 @@ export default function Workspace({ id, view, navigate, account }) {
             </>
           ) : view === "chat" ? (
             <Chat
+              workspaceId={id}
               messages={messages}
               activity={activity}
               updateMessages={setMessages}
@@ -733,8 +734,10 @@ function Sidebar({ workspace, view, joined, live, counts, screens, account, navi
             Settings
           </a>
         )}
-        <ThemeSwitch />
-        {account.user && <AccountMenu account={account} showName menuExtra={() => <AccountMenuExtra />} />}
+        <div className="sidebar-foot-row">
+          {account.user && <AccountMenu account={account} showName menuExtra={() => <AccountMenuExtra />} />}
+          <ThemeSwitch />
+        </div>
       </div>
     </nav>
   );
