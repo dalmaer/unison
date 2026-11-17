@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowUpRight, Bot, ChevronDown, FolderGit2, Globe, Keyboard, KeyRound, LayoutGrid, Link2, ListTodo, MessageCircle, Pencil, Plus, RefreshCw, Repeat, Settings, UserPlus } from "lucide-react";
+import { ArrowUpRight, Bot, ChevronDown, Compass, FolderGit2, Globe, Keyboard, KeyRound, LayoutGrid, Link2, ListTodo, MessageCircle, Pencil, Plus, RefreshCw, Repeat, Settings, UserPlus } from "lucide-react";
 import { ApiError, PageUnloadingError, getToken, setToken, workspaceApi } from "./api.js";
 import { AccountMenu } from "./Account.jsx";
 import { markSeen } from "./activity.js";
@@ -27,6 +27,7 @@ import WorkspaceSwitcher from "./WorkspaceSwitcher.jsx";
 import { ImageUpload, imageUploader } from "./images.jsx";
 import { MentionProvider } from "./mentions.jsx";
 import { ShortcutsDialog, isEditableTarget, shouldIgnoreShortcut } from "./shortcuts.jsx";
+import Tour, { hasSeenTour } from "./Tour.jsx";
 
 const ACTIVE_WINDOW_MS = 2 * 60 * 1000;
 const DORMANT_WINDOW_MS = 15 * 60 * 1000;
@@ -177,6 +178,8 @@ export default function Workspace({ id, view, navigate, account }) {
   const [error, setError] = useState("");
   const [editingMe, setEditingMe] = useState(false); // MeDialog is open
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [tourOpen, setTourOpen] = useState(false);
+  const tourChecked = useRef(false);
   const [upgradeReady, setUpgradeReady] = useState(false);
   const [sessionExpired, setSessionExpired] = useState(false);
   const loadedOnce = useRef(false);
@@ -303,6 +306,13 @@ export default function Workspace({ id, view, navigate, account }) {
     setGate(null);
     setJoins((n) => n + 1);
   };
+
+  useEffect(() => {
+    if (!joined || !workspace || tourChecked.current) return;
+    tourChecked.current = true;
+    const wantsTour = new URLSearchParams(window.location.search).has("tour");
+    if (wantsTour || !hasSeenTour()) setTourOpen(true);
+  }, [joined, Boolean(workspace)]);
 
   // Initial load, once we know whether you're signed in.
   useEffect(() => {
@@ -450,7 +460,7 @@ export default function Workspace({ id, view, navigate, account }) {
   const emptyAgents = participantsLoaded && !sidebarParticipants.some(KINDS.agents);
   // The screen header's controls on phones: Invite and the account menu.
   const headExtras = (
-    <HeadExtras workspace={workspace} call={call} account={account} members={members} settingsLink={screens.link("settings")} onOpenShortcuts={() => setShortcutsOpen(true)} />
+    <HeadExtras workspace={workspace} call={call} account={account} members={members} settingsLink={screens.link("settings")} onOpenShortcuts={() => setShortcutsOpen(true)} onStartTour={() => setTourOpen(true)} />
   );
   const errorBar = sessionExpired ? (
     <p role="alert" className="error-bar">
@@ -493,6 +503,7 @@ export default function Workspace({ id, view, navigate, account }) {
         screens={screens}
         account={account}
         onOpenShortcuts={() => setShortcutsOpen(true)}
+        onStartTour={() => setTourOpen(true)}
         navigate={navigate}
         participants={participantsLoaded ? sidebarParticipants : null}
         reviews={reviews}
@@ -538,6 +549,7 @@ export default function Workspace({ id, view, navigate, account }) {
         />
       )}
       {shortcutsOpen && <ShortcutsDialog onClose={() => setShortcutsOpen(false)} />}
+      {joined && workspace && tourOpen && <Tour workspace={workspace} onClose={() => setTourOpen(false)} />}
       {view === "settings" && joined ? (
         <main className="shell-main panel">
           <SettingsPage
@@ -771,7 +783,7 @@ function SectionHeading({ title, count, open, onToggle, ariaControls }) {
 // here (humans and agents, each with Invite), pull requests pending review (with a GitHub
 // token, #127), links out (product, canvas, repositories, custom links #299),
 // then settings and your account at the bottom.
-function Sidebar({ workspace, view, joined, live, counts, screens, account, onOpenShortcuts, navigate, participants, people, reviews, call }) {
+function Sidebar({ workspace, view, joined, live, counts, screens, account, onOpenShortcuts, onStartTour, navigate, participants, people, reviews, call }) {
   const repos = workspace.repos || [];
   const links = workspace.links || [];
   const [editingLink, setEditingLink] = useState(null); // A link, or "new".
@@ -820,7 +832,7 @@ function Sidebar({ workspace, view, joined, live, counts, screens, account, onOp
           <ul className="nav-list" aria-label="Screens">
             {SCREENS.map(({ id, label, Icon, key }) => (
               <li key={id}>
-                <a className="nav-link" aria-keyshortcuts={key} title={`${label} (${key})`} {...screens.link(id)}>
+                <a className="nav-link" data-tour={id} aria-keyshortcuts={key} title={`${label} (${key})`} {...screens.link(id)}>
                   <Icon aria-hidden="true" />
                   {label}
                   <ScreenCount screen={id} counts={counts} />
@@ -879,7 +891,7 @@ function Sidebar({ workspace, view, joined, live, counts, screens, account, onOp
                 )}
                 {workspace.canvas_url && (
                   <li>
-                    <a className="nav-link" href={workspace.canvas_url} target="_blank" rel="noreferrer" title="Open the design canvas">
+                    <a className="nav-link" data-tour="canvas" href={workspace.canvas_url} target="_blank" rel="noreferrer" title="Open the design canvas">
                       <LayoutGrid aria-hidden="true" />
                       Canvas
                       <ArrowUpRight className="nav-ext" aria-label="(opens in a new tab)" />
@@ -926,13 +938,13 @@ function Sidebar({ workspace, view, joined, live, counts, screens, account, onOp
       </div>
       <div className="sidebar-foot">
         {joined && (
-          <a className="nav-link" {...screens.link("settings")} title="Workspace settings">
+          <a className="nav-link" data-tour={workspace.canvas_url ? undefined : "canvas"} {...screens.link("settings")} title="Workspace settings">
             <Settings aria-hidden="true" />
             Settings
           </a>
         )}
         <div className="sidebar-foot-row">
-          {account.user && <AccountMenu account={account} showName menuExtra={(close) => <AccountMenuExtra close={close} onOpenShortcuts={onOpenShortcuts} />} />}
+          {account.user && <AccountMenu account={account} showName menuExtra={(close) => <AccountMenuExtra close={close} onOpenShortcuts={onOpenShortcuts} onStartTour={onStartTour} />} />}
           <ThemeSwitch />
         </div>
       </div>
@@ -945,7 +957,7 @@ function TabBar({ view, counts, screens }) {
   return (
     <nav className="tabbar" aria-label="Screens">
       {SCREENS.map(({ id, label, Icon, key }) => (
-        <a key={id} className="tab" aria-keyshortcuts={key} title={`${label} (${key})`} {...screens.link(id)}>
+        <a key={id} className="tab" data-tour={id} aria-keyshortcuts={key} title={`${label} (${key})`} {...screens.link(id)}>
           <span className="tab-icon">
             <Icon aria-hidden="true" />
             <ScreenCount screen={id} counts={counts} />
@@ -959,10 +971,21 @@ function TabBar({ view, counts, screens }) {
 
 // AccountMenuExtra is what the account menu adds in a workspace. The theme
 // isn't here: the sidebar (and the header on phones) has the switch (#131).
-function AccountMenuExtra({ close, onOpenShortcuts }) {
+function AccountMenuExtra({ close, onOpenShortcuts, onStartTour }) {
   return (
     <>
       {notifySupported && <NotifyRow />}
+      <button
+        type="button"
+        className="button button-secondary"
+        onClick={() => {
+          close?.();
+          onStartTour?.();
+        }}
+      >
+        <Compass aria-hidden="true" />
+        Take the tour
+      </button>
       <button
         type="button"
         className="button button-secondary"
@@ -1015,7 +1038,7 @@ function InviteButton({ kind, workspace, account, members, call, className, call
   const close = () => setOpen(false);
   return (
     <>
-      <button type="button" className={className} title={title} aria-haspopup="dialog" onClick={() => setOpen(true)}>
+      <button type="button" className={className} data-tour={kind === "agent" ? "invite-agent" : "invite-human"} title={title} aria-haspopup="dialog" onClick={() => setOpen(true)}>
         <Icon aria-hidden="true" />
         <span className="label">{title}</span>
       </button>
@@ -1035,7 +1058,7 @@ function InviteButton({ kind, workspace, account, members, call, className, call
 
 // HeadExtras: on phones (no sidebar), Invite and the account menu at the
 // right of each screen's header; the menu also holds settings.
-function HeadExtras({ workspace, call, account, members, settingsLink, onOpenShortcuts }) {
+function HeadExtras({ workspace, call, account, members, settingsLink, onOpenShortcuts, onStartTour }) {
   return (
     <>
       <span className="head-account">
@@ -1047,8 +1070,8 @@ function HeadExtras({ workspace, call, account, members, settingsLink, onOpenSho
             account={account}
             menuExtra={(close) => (
               <>
-                <AccountMenuExtra close={close} onOpenShortcuts={onOpenShortcuts} />
-                <a className="button button-secondary" href={settingsLink.href} onClick={(e) => {
+                <AccountMenuExtra close={close} onOpenShortcuts={onOpenShortcuts} onStartTour={onStartTour} />
+                <a className="button button-secondary" data-tour={workspace.canvas_url ? undefined : "canvas"} href={settingsLink.href} onClick={(e) => {
                     close();
                     settingsLink.onClick(e);
                   }}>
