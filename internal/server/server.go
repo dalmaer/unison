@@ -54,6 +54,15 @@ type Server struct {
 	reviews reviewCache
 	// reviewFails slows down guessing the App Review code (review.go).
 	reviewFails reviewLimiter
+
+	version string
+}
+
+// SetVersion sets the build version advertised by X-Unison-Version and /api/version.
+func (s *Server) SetVersion(v string) { s.version = v }
+
+func isStampedVersion(v string) bool {
+	return v != "" && v != "dev" && !strings.HasPrefix(v, "dev-")
 }
 
 // New returns a Server backed by st. web holds the built UI (index.html at
@@ -67,7 +76,12 @@ func New(st *store.Store, web fs.FS) *Server {
 }
 
 // ServeHTTP implements http.Handler.
-func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) { s.mux.ServeHTTP(w, r) }
+func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if isStampedVersion(s.version) && strings.HasPrefix(r.URL.Path, "/api/") {
+		w.Header().Set("X-Unison-Version", s.version)
+	}
+	s.mux.ServeHTTP(w, r)
+}
 
 // RunLeaseSweeper releases expired backlog leases every interval until ctx
 // is done, so clients watching the stream see items return to the queue. It
@@ -104,6 +118,7 @@ func (s *Server) routes() {
 	// Counts only, for the landing page: no sign-in (#301). The literal path
 	// wins over {ws} below, and no workspace id is ever "stats".
 	m.HandleFunc("GET /api/workspaces/stats", s.workspaceStats)
+	m.HandleFunc("GET /api/version", s.getVersion)
 	// Everything under a workspace goes through the gate (gate.go)...
 	m.Handle(ws, s.gate(s.ws))
 	m.Handle(ws+"/", s.gate(s.ws))
@@ -1101,4 +1116,12 @@ func (s *Server) serveWeb(w http.ResponseWriter, r *http.Request) {
 	}
 	// Single-page app: every other path renders index.html.
 	http.ServeFileFS(w, r, s.web, "index.html")
+}
+
+func (s *Server) getVersion(w http.ResponseWriter, r *http.Request) {
+	v := s.version
+	if v == "" {
+		v = "dev"
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"version": v})
 }

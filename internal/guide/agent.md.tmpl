@@ -177,7 +177,8 @@ everyone else.** So you work in laps, and every lap ends parked on
    unison peek --mentions && unison wait --mentions   # exit 2: nothing yet, sleep again
    ```
 
-Keep running laps until a human tells you to stop.
+Keep running laps until a human tells you to stop. When the CLI says it is out of
+date, update before the next lap.
 
 ## Assignment & Leases
 
@@ -249,7 +250,7 @@ or `#3`.
 
 | CLI | HTTP API |
 | --- | --- |
-| `unison version` | none: it reports the local binary |
+| `unison version` | `GET /api/version` (no sign-in: `{"version"}`; every `/api/` response also sends `X-Unison-Version` when stamped, and the CLI warns on stderr when it is older than the server) |
 | `unison workspace create <name> [--repo URL]... [--canvas URL \| --create-canvas]` (humans) | `POST /api/workspaces` (account token; you become its first member). `--create-canvas` first makes a new isocan canvas named after the workspace (`isocan --json canvas new <name>`, so it needs the isocan CLI set up against isocan.io) and sends its `https://isocan.io/p/<id>` address as `canvas_url`; the web UI's "Create one" does the same in an isocan popup |
 | `unison workspace list` (humans) | `GET /api/workspaces` (account token: your workspaces). Each has `activity_seq`: the number of its latest event by someone other than you (messages, backlog changes and comments, PR links, schedules, joins), absent if there is none. The CLI prints it as `[activity #<seq>]`; a higher number than last time means there is something new |
 | `unison workspace stats` | `GET /api/workspaces/stats` (no sign-in: `total`, `created_last_7_days`, `created_today`; counts only, rolling windows) |

@@ -251,13 +251,16 @@ Environment: UNISON_SERVER, UNISON_WORKSPACE, UNISON_TOKEN, UNISON_CONFIG,
 `
 
 type app struct {
-	out     io.Writer
-	errOut  io.Writer // progress and warnings; never the result
-	cfg     *Config
-	jsonOut bool
-	server  string
-	ws      string
-	token   string
+	out              io.Writer
+	errOut           io.Writer // progress and warnings; never the result
+	cfg              *Config
+	jsonOut          bool
+	server           string
+	serverExplicit   bool
+	ws               string
+	token            string
+	versionChecked   bool
+	forceVersionWarn bool
 }
 
 // Run executes the unison command with args (excluding the program name)
@@ -301,6 +304,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 	if a.cfg, err = loadConfig(configPath); err != nil {
 		return err
 	}
+	a.serverExplicit = firstNonEmpty(a.server, os.Getenv("UNISON_SERVER"), a.cfg.Server) != ""
 	a.server = firstNonEmpty(a.server, os.Getenv("UNISON_SERVER"), a.cfg.Server, DefaultServer)
 	a.ws = firstNonEmpty(a.ws, os.Getenv("UNISON_WORKSPACE"), a.cfg.Workspace)
 	a.token = firstNonEmpty(a.token, os.Getenv("UNISON_TOKEN"), a.cfg.Token)
@@ -442,7 +446,13 @@ func firstNonEmpty(vals ...string) string {
 // client calls the API as the participant joined here, or else as the
 // signed-in account (`unison login`), e.g. to read a workspace you're a
 // member of without having joined from this directory.
-func (a *app) client() *client { return newClient(a.server, firstNonEmpty(a.token, a.userToken())) }
+func (a *app) client() *client { return a.clientWithToken(firstNonEmpty(a.token, a.userToken())) }
+
+func (a *app) clientWithToken(token string) *client {
+	c := newClient(a.server, token)
+	c.onVersion = a.checkServerVersion
+	return c
+}
 
 // wsPath returns the API path for the current workspace.
 func (a *app) wsPath(suffix string) (string, error) {
@@ -516,6 +526,7 @@ func serve(args []string) error {
 	}
 	defer st.Close()
 	srv := server.New(st, webui.FS())
+	srv.SetVersion(buildVersion())
 	auth := server.AuthConfigFromEnv()
 	srv.SetAuth(auth)
 	if err := setupPush(srv); err != nil {
@@ -670,7 +681,7 @@ func (a *app) workspaceStats(args []string) error {
 		return fmt.Errorf("%w: workspace stats takes no arguments", errUsage)
 	}
 	var raw json.RawMessage
-	if err := newClient(a.server, "").do("GET", "/api/workspaces/stats", nil, &raw); err != nil {
+	if err := a.clientWithToken("").do("GET", "/api/workspaces/stats", nil, &raw); err != nil {
 		return err
 	}
 	if a.jsonOut {
@@ -2399,6 +2410,7 @@ func (a *app) wait(args []string) error {
 	if err != nil {
 		return err
 	}
+	a.forceVersionWarn = true
 	c := a.client()
 	// A server that is restarting, or a network that blinks, is waited out
 	// (#317): every read below is retried until --timeout, here and in the
