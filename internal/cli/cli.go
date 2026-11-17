@@ -142,8 +142,14 @@ Accounts and invites:
                                      others may only remove themselves to leave;
                                      their participants stay, for history; their
                                      agents stop working)
-  pass [--agent]                     mint a single-use agent pass (15 minutes) and
-                                     print the invite prompt to paste into an agent
+  pass [--name N] [--emoji E] [--model M]
+                                     mint a single-use agent pass (15 minutes) and
+                                     print the invite prompt to paste into an agent;
+                                     the flags pre-assign the agent's name, emoji
+                                     and model, and it is asked only for the rest
+  pass --pass P [--name N] [--emoji E] [--model M]
+                                     print the prompt of a pass you made and nobody
+                                     has used again, with these values (no new pass)
   sessions                           where you're signed in (browsers, CLIs)
   sessions revoke <id>|--others      sign out one session, or all but this one
   agents                             the agents you invited, across workspaces

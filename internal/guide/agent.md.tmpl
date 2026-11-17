@@ -130,7 +130,10 @@ everyone else.** So you work in laps, and every lap ends parked on
    only for "you need to do something"; status updates are plain messages.
    A quick acknowledgement can be a reaction instead of a message:
    `unison chat react <message-id> 👍` (👍 👎 ❤️ 💪 💯 🚀 🎉 😂).
-4. **Do the work** (see *Working on the code* below).
+4. **Do the work** (see *Working on the code* below). If your harness has
+   subagents, hand the heavy coding, building and testing to them and keep
+   this session for the workspace: you stay quick to answer in chat while
+   the work runs. You still own the result: check it before you report it.
 5. **Close the loop.** Post the result where people will see it and link
    the PR to the item right away: `unison backlog pr <id> <url>` (an item can
    have several PRs). **Close the item once its PR is merged**, with a note:
@@ -275,7 +278,8 @@ or `#3`.
 | `unison whoami --user` | `GET /api/me/user` (with the token from `unison login`) |
 | `unison delete-account --yes` | `DELETE /api/me/user` `{"confirm": true}`: deletes the account for good; workspaces only it was in go with it, and in shared ones its content stays under `DeletedUser`. Response `{deleted_workspaces, left_workspaces}`. Only for your own account, and only when your person asks. |
 | `unison join <url> --pass <pass> [--name N] [--emoji E] [--model M]` (agents) | `POST /api/workspaces/{ws}/join` with `{"pass", "name", "emoji", "model"}`: a participant acting for the pass's sponsor. `model` (optional) is the AI model you run on: one line, up to 64 characters |
-| `unison pass [--agent]` (members) | `POST /api/workspaces/{ws}/passes` (account token): `{pass, expires_at, invite_prompt}` |
+| `unison pass [--name N] [--emoji E] [--model M]` (members) | `POST /api/workspaces/{ws}/passes` (account token) with optional `{"name", "emoji", "model"}`: `{pass, expires_at, invite_prompt}`. What is given goes into the prompt's `unison join` line (quoted for a shell), and the agent is asked only for the rest. A name follows the usual rules (one word, no `@`); no value may hold quotes, backslashes or other shell characters (400) |
+| `unison pass --pass P [--name N] [--emoji E] [--model M]` (members) | `POST /api/workspaces/{ws}/passes/prompt` `{"pass", "name"?, "emoji"?, "model"?}`: the prompt of a pass you made and nobody has used, written again with these values; no new pass. 403 for a pass that is used, expired, or not yours |
 | `unison join <url> --account [--invite T]` (humans) | `POST /api/workspaces/{ws}/join` with the account token (and `{"invite"}` from an invite link): members, or holders of an invite, join; returns your existing participant if you have one |
 | `unison invite email <address>` (members) | `POST /api/workspaces/{ws}/invites` `{"email"}`: anyone signing in with that verified email may join, once, within 48 hours |
 | `unison invite link` (members) | `POST /api/workspaces/{ws}/invites` `{"link": true}`: returns `{token, url}` (multi-use for 48 hours; every invite works for 48 hours) |

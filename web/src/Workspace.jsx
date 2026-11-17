@@ -19,7 +19,9 @@ import SettingsPage from "./settings/SettingsPage.jsx";
 import { UrlBox } from "./settings/Webhooks.jsx";
 import Button from "./ui/Button.jsx";
 import Dialog from "./ui/Dialog.jsx";
-import { Textarea } from "./ui/Input.jsx";
+import EmojiPicker from "./ui/EmojiPicker.jsx";
+import Field from "./ui/Field.jsx";
+import { Input, Textarea } from "./ui/Input.jsx";
 import ThemeSwitch from "./ui/ThemeSwitch.jsx";
 import WorkspaceSwitcher from "./WorkspaceSwitcher.jsx";
 import { ImageUpload, imageUploader } from "./images.jsx";
@@ -917,22 +919,84 @@ function InvitePerson({ workspaceId, call, onNavigate }) {
   );
 }
 
+// As long as the server allows a model to be (store.ModelMax).
+const MODEL_MAX = 64;
+// How long typing rests before the prompt is written again.
+const PREFILL_PAUSE_MS = 300;
+
+// What the member filled in of an invited agent's name, emoji and model,
+// as the pass endpoints take it: only the fields that aren't blank.
+function prefillOf(who) {
+  return Object.fromEntries(
+    Object.entries(who)
+      .map(([key, value]) => [key, value.trim()])
+      .filter(([, value]) => value),
+  );
+}
+
 // InviteAgent: a signed-in member gets a single-use pass (15 minutes)
 // embedded in the prompt, so the agent joins as their agent. Agents can't
 // join without one.
+//
+// Under "Customize" the member may pre-assign the agent's name, emoji and
+// model (#306). They go into the prompt's join line, and the agent is asked
+// only for what is left blank. As they change, the prompt is written again
+// for the same pass (POST …/passes/prompt), so typing mints nothing; Copy
+// waits until the prompt shows what the fields say. Folding the section
+// away keeps the values.
 function InviteAgent({ call }) {
   const [minted, setMinted] = useState(null); // {pass, expires_at, invite_prompt}
   const [error, setError] = useState("");
   const [now, setNow] = useState(Date.now());
+  const [who, setWho] = useState({ name: "", emoji: "", model: "" });
+  // The prompt doesn't show the fields yet: a re-render is due, in flight,
+  // or was refused (the error says why).
+  const [behind, setBehind] = useState(false);
+  const latest = useRef({ who, pass: "" });
+  latest.current = { who, pass: minted?.pass || "" };
   const mint = () => {
     setError("");
-    call("POST", "/passes").then(setMinted, (e) => setError(e.message));
+    call("POST", "/passes", prefillOf(latest.current.who)).then(
+      (m) => {
+        setMinted(m);
+        setBehind(false);
+      },
+      (e) => setError(e.message),
+    );
   };
   useEffect(mint, []);
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
   }, []);
+  const typed = useRef(false);
+  useEffect(() => {
+    if (!typed.current) return; // Not on the first render: mint has it.
+    setBehind(true);
+    let superseded = false;
+    const t = setTimeout(() => {
+      const { who, pass } = latest.current;
+      // No pass yet (minting failed): "New pass" will carry the values.
+      if (!pass) return;
+      call("POST", "/passes/prompt", { pass, ...prefillOf(who) }).then(
+        (m) => {
+          if (superseded) return;
+          setMinted(m);
+          setError("");
+          setBehind(false);
+        },
+        (e) => superseded || setError(e.message),
+      );
+    }, PREFILL_PAUSE_MS);
+    return () => {
+      superseded = true;
+      clearTimeout(t);
+    };
+  }, [who.name, who.emoji, who.model]);
+  const set = (key) => (value) => {
+    typed.current = true;
+    setWho((w) => ({ ...w, [key]: value }));
+  };
   const left = minted ? Math.max(0, Math.round((minted.expires_at - now) / 1000)) : 0;
   const prompt = minted && left > 0 ? minted.invite_prompt : "";
   const copyPrompt = () => {
@@ -943,16 +1007,30 @@ function InviteAgent({ call }) {
   return (
     <>
       <p>Paste this into any coding agent:</p>
-      <Textarea readOnly value={prompt} rows={8} onFocus={(e) => e.target.select()} placeholder={!error ? "Making a pass…" : ""} />
+      <Textarea readOnly value={prompt} rows={8} aria-busy={behind && !error} onFocus={(e) => e.target.select()} placeholder={!error ? "Making a pass…" : ""} />
       {minted && (
         <p className="pass-status muted" aria-live="polite">
           <KeyRound aria-hidden="true" />
           {left > 0 ? `Pass works once · expires in ${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}` : "Pass expired"}
         </p>
       )}
+      <details className="invite-customize">
+        <summary>Customize name, emoji & model (optional)</summary>
+        <div className="form">
+          <div className="new-workspace-me">
+            <Field label="Name">
+              <Input pattern="[^\s@]+" title="One word, without @" autoComplete="off" placeholder="the agent picks" value={who.name} onChange={(e) => set("name")(e.target.value)} />
+            </Field>
+            <EmojiPicker label="Emoji" value={who.emoji} onChange={set("emoji")} />
+          </div>
+          <Field label="Model">
+            <Input autoComplete="off" maxLength={MODEL_MAX} placeholder="the agent says" value={who.model} onChange={(e) => set("model")(e.target.value)} />
+          </Field>
+        </div>
+      </details>
       {error && <p role="alert">Error: {error}</p>}
       <div className="actions-row">
-        <Button type="button" disabled={!prompt} onClick={copyPrompt}>
+        <Button type="button" disabled={!prompt || behind} onClick={copyPrompt}>
           Copy
         </Button>
         <Button type="button" variant="ghost" onClick={mint}>

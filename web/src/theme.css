@@ -3849,6 +3849,18 @@ html.reordering * {
   height: 14px;
 }
 
+/* Invite an agent: the optional name, emoji and model, folded away until
+   asked for (#306). */
+.invite-customize summary {
+  width: fit-content;
+  cursor: pointer;
+  font-weight: var(--weight-ui-medium);
+}
+
+.invite-customize[open] summary {
+  margin-bottom: var(--space-s);
+}
+
 /* ---- Home: site header, landing page (Landing.jsx, App.jsx) ---- */
 .landing {
   min-height: 100vh;

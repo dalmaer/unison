@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode"
 )
 
 // Agent passes: a member mints a single-use pass (valid AgentPassTTL) and
@@ -51,6 +52,59 @@ func (s *Store) MintPass(ctx context.Context, wsID string, userID int64) (string
 		return "", 0, err
 	}
 	return pass, expires, nil
+}
+
+// shellSpecial are the characters a pre-assigned value may not hold: it is
+// pasted into a shell command in the invite prompt.
+const shellSpecial = "'\"`$\\;&|<>(){}[]*?!~#"
+
+// CleanPrefill tidies and checks what a member pre-assigns to the agent a
+// pass invites (#306): any of its name, emoji and model, each optional.
+// The usual rules apply (a name is one word without '@'; a model is one
+// line of at most ModelMax characters), and because the values end up in
+// the `unison join` line of the invite prompt, none may hold a quote, a
+// backslash or another character a shell treats specially. Only a model
+// may hold spaces.
+func CleanPrefill(who AgentJoin) (AgentJoin, error) {
+	name, emoji := strings.TrimSpace(who.Name), strings.TrimSpace(who.Emoji)
+	model, err := validModel(who.Model)
+	if err != nil {
+		return AgentJoin{}, err
+	}
+	if err := validName(name); err != nil {
+		return AgentJoin{}, err
+	}
+	if strings.IndexFunc(emoji, unicode.IsSpace) >= 0 {
+		return AgentJoin{}, fmt.Errorf("%w: an emoji cannot contain whitespace", ErrInvalid)
+	}
+	for what, v := range map[string]string{"name": name, "emoji": emoji, "model": model} {
+		if strings.ContainsAny(v, shellSpecial) || strings.IndexFunc(v, unicode.IsControl) >= 0 {
+			return AgentJoin{}, fmt.Errorf("%w: the %s cannot contain quotes, backslashes or other shell characters (%s)", ErrInvalid, what, shellSpecial)
+		}
+	}
+	return AgentJoin{Name: name, Emoji: emoji, Model: model}, nil
+}
+
+// OpenPass checks that pass is one userID minted for wsID and that it can
+// still be used, and returns its expiry (#306). A pass someone else minted
+// reads as unknown.
+func (s *Store) OpenPass(ctx context.Context, wsID, pass string, userID int64) (int64, error) {
+	var passWS string
+	var sponsor, expires int64
+	var used sql.NullInt64
+	err := s.db.QueryRowContext(ctx, `SELECT workspace_id, sponsor_user_id, expires_at, used_at FROM agent_passes WHERE pass_hash = ?`, HashToken(pass)).
+		Scan(&passWS, &sponsor, &expires, &used)
+	switch {
+	case errors.Is(err, sql.ErrNoRows), err == nil && (sponsor != userID || passWS != wsID):
+		return 0, fmt.Errorf("%w: unknown pass; make a new one", ErrForbidden)
+	case err != nil:
+		return 0, err
+	case used.Valid:
+		return 0, fmt.Errorf("%w: this pass was already used (passes work once); make a new one", ErrForbidden)
+	case expires <= s.now().UnixMilli():
+		return 0, fmt.Errorf("%w: this pass expired (passes last %d minutes); make a new one", ErrForbidden, int(AgentPassTTL.Minutes()))
+	}
+	return expires, nil
 }
 
 func isMember(t *tx, wsID string, userID int64) (bool, error) {

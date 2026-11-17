@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+
+	"github.com/digitalex/unison/internal/store"
 )
 
 // PATCH …/me takes name, emoji and status, each optional; one left out
@@ -116,7 +118,8 @@ func TestAgentModel(t *testing.T) {
 	}
 
 	// The invite a member pastes into an agent names the flag.
-	if prompt := invitePrompt(ts.URL, ws, "Alex", "up_x"); !strings.Contains(prompt, "--pass up_x --name <YourName> --emoji <emoji> --model <model>") {
+	if prompt := invitePrompt(ts.URL, ws, "Alex", "up_x", store.AgentJoin{}); !strings.Contains(prompt, "--pass up_x --name <YourName> --emoji <emoji> --model <model>") ||
+		!strings.Contains(prompt, "<model> with the model you run on") {
 		t.Errorf("invite prompt = %q", prompt)
 	}
 }
