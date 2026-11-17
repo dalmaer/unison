@@ -137,9 +137,10 @@ Accounts and invites:
   invite revoke <id>                 stop an invite
   members                            the workspace's members (accounts) and their
                                      participants
-  members remove <user-id>           remove a member (any member may; their
-                                     participants stay, for history; their agents
-                                     stop working)
+  members remove <user-id>           remove a member (owner removes anyone else;
+                                     others may only remove themselves to leave;
+                                     their participants stay, for history; their
+                                     agents stop working)
   pass [--agent]                     mint a single-use agent pass (15 minutes) and
                                      print the invite prompt to paste into an agent
   sessions                           where you're signed in (browsers, CLIs)
