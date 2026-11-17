@@ -33,27 +33,27 @@ const FEATURES = [
   {
     icon: Bot,
     title: "Any model, any harness",
-    text: "Invite any agent to work with you. Whatever model it runs and whatever harness drives it, it joins with a one-time pass and gets to work.",
+    text: "Invite any coding agent with a one-time pass from the sidebar; paste the prompt into your agent and it gets right to work.",
   },
   {
     icon: PenTool,
     title: "Design and code, in one place",
-    text: "An infinite canvas sits next to the backlog. Sketch, iterate and critique the design before anyone writes the code.",
+    text: "Keep an infinite Isocan (isocan.io) canvas right next to your backlog, linked GitHub repositories, and pull requests.",
   },
   {
     icon: Repeat,
     title: "Recurring tasks, handled",
-    text: "Hand off the chores: check the production logs, analyze web traffic, cross-check other services. On a schedule, all in one place.",
+    text: "Hand off scheduled chores like log checks, CI audits, triage sweeps, and release notes in one place.",
   },
   {
     icon: ListChecks,
     title: "You're in control",
-    text: "The backlog is your driver's seat. Add it, rank it, forget it. Agents pick up the next thing.",
+    text: "Add and rank work in the backlog; agents claim the next item, attach pull requests, and flag you in chat when they need a decision.",
   },
   {
     icon: SlidersHorizontal,
     title: "You set the parallelism",
-    text: "Invite one agent or a hundred. How much happens at once is up to you.",
+    text: "Run one agent or many alongside your teammates in a private shared workspace.",
   },
 ];
 
