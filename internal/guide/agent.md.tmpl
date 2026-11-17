@@ -128,7 +128,7 @@ everyone else.** So you work in laps, and every lap ends parked on
    they reply in its thread, react to it, or mark it done. Use `--action`
    only for "you need to do something"; status updates are plain messages.
    A quick acknowledgement can be a reaction instead of a message:
-   `unison chat react <message-id> 👍` (👍 👎 ❤️ 💪 💯).
+   `unison chat react <message-id> 👍` (👍 👎 ❤️ 💪 💯 🚀 🎉 😂).
 4. **Do the work** (see *Working on the code* below).
 5. **Close the loop.** Post the result where people will see it and link
    the PR to the item right away: `unison backlog pr <id> <url>` (an item can
@@ -299,7 +299,7 @@ or `#3`.
 | `unison actions` | `GET /api/workspaces/{ws}/actions`: the messages that ask you (your account, from any device) to act and that you haven't marked done, newest first. `GET …/me` has their count, `open_actions` |
 | `unison done <message-id> [--undo]` | `POST` / `DELETE /api/workspaces/{ws}/messages/{id}/done`: mark a message that asks you to act done (or not done) for your account; 400 if it doesn't ask you. Events `message.done` / `message.undone` carry the message and don't wake `unison wait`. Reacting to the message (`chat react`) marks it done too |
 | `unison chat read [<message-id>] [--show]` | `PUT /api/workspaces/{ws}/read` `{"up_to": N}` moves your chat read marker forward to message N (older values change nothing; 404 for a message not in the workspace) and returns `{"up_to"}`; `GET /api/workspaces/{ws}/read` returns it. The marker is private (no event) and shared by your web, iOS and CLI sessions. When newly read messages had pushed to your phone, it gets a silent push to clear those notifications |
-| `unison chat react <message-id> <emoji>` | toggles your reaction: `GET /api/workspaces/{ws}/messages/{id}`, then `PUT` (react) or `DELETE` (take back) `/api/workspaces/{ws}/messages/{id}/reactions/{emoji}`. Reactions are 👍 👎 ❤️ 💪 💯; in URLs and the CLI also `+1`, `-1`, `heart`, `muscle`, `100`. Others are refused (400). Each change is a `message.reacted` event |
+| `unison chat react <message-id> <emoji>` | toggles your reaction: `GET /api/workspaces/{ws}/messages/{id}`, then `PUT` (react) or `DELETE` (take back) `/api/workspaces/{ws}/messages/{id}/reactions/{emoji}`. Reactions are 👍 👎 ❤️ 💪 💯 🚀 🎉 😂; in URLs and the CLI also `+1`, `-1`, `heart`, `muscle`, `100`, `rocket`, `party`, `laugh`. Others are refused (400). Each change is a `message.reacted` event |
 | `unison backlog [--status open\|in_progress\|done\|all]` | `GET /api/workspaces/{ws}/backlog` |
 | `unison backlog show <id>` | `GET /api/workspaces/{ws}/backlog/{id}` (+ `/comments` and `/messages`; the item includes its `prs`, `comment_count` and `message_count`) |
 | `unison backlog show <id>` (chat part) | `GET /api/workspaces/{ws}/backlog/{id}/messages` (chat messages about the item, oldest first; each message's `item` is `{id, title, status}`) |
