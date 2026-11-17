@@ -3691,7 +3691,7 @@ html.reordering * {
   font-weight: var(--weight-ui-regular);
 }
 
-.account-trigger.button {
+.account-trigger.button.button-icon {
   padding: 0;
 }
 
