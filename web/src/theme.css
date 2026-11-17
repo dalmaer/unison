@@ -732,6 +732,42 @@ html.dialog-open {
 }
 
 /* ---- Theme switch (ui/ThemeSwitch.jsx) ---- */
+.theme-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+  width: 82px;
+  height: 30px;
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--panel-edge);
+}
+
+.theme-switch button {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.theme-switch button .lucide {
+  width: 14px;
+  height: 14px;
+}
+
+.theme-switch button[aria-pressed="true"] {
+  background: var(--panel);
+  color: var(--text);
+  box-shadow: var(--control-shadow);
+}
+
 .seg {
   display: inline-flex;
   padding: 2px;
@@ -1306,9 +1342,15 @@ button.nav-link {
   flex-shrink: 0;
 }
 
-.sidebar-foot > .seg {
-  align-self: flex-start;
-  margin: var(--space-xxs) 10px;
+.sidebar-foot-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.sidebar-foot-row .popover-anchor {
+  flex: 1;
+  min-width: 0;
 }
 
 .sidebar-foot .popover-anchor {
@@ -3584,6 +3626,10 @@ html.reordering * {
     scroll-snap-align: start;
   }
 
+  .theme-switch {
+    display: none;
+  }
+
   .theme-cycle {
     display: inline-flex;
   }
@@ -4471,7 +4517,8 @@ html.reordering * {
     max-width: none;
   }
 
-  .account-menu .seg {
+  .account-menu .seg,
+  .account-menu .theme-switch {
     display: inline-flex;
   }
 
