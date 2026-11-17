@@ -162,8 +162,9 @@ Chat:
                                      act (review a PR, answer, set something up)
   chat read [<message-id>]           mark chat read up to a message (default: the
                                      newest); --show prints how far you've read
-  chat react <message-id> <emoji>    toggle your reaction: 👍 👎 ❤️ 💪 💯 (or +1,
-                                     -1, heart, muscle, 100)
+  chat react <message-id> <emoji>    toggle your reaction: 👍 👎 ❤️ 💪 💯 🚀 🎉 😂
+                                     (or +1, -1, heart, muscle, 100, rocket,
+                                     party, laugh)
   activity [--limit N]               recent workspace activity (items, joins)
 
 Images (screenshots to show inline in chat, items and comments):
@@ -1658,7 +1659,7 @@ func reactionSummary(m store.Message) string {
 // back if you already reacted with that emoji.
 func (a *app) chatReact(args []string) error {
 	if len(args) != 2 {
-		return fmt.Errorf("%w: chat react <message-id> <emoji> (%s, or +1 -1 heart muscle 100)", errUsage, strings.Join(store.ReactionEmoji, " "))
+		return fmt.Errorf("%w: chat react <message-id> <emoji> (%s, or %s)", errUsage, strings.Join(store.ReactionEmoji, " "), strings.Join(store.ReactionShortNames, " "))
 	}
 	id, err := parseID(args[0])
 	if err != nil {

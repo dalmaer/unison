@@ -31,6 +31,9 @@ const REACTIONS = [
   { emoji: "❤️", label: "Heart" },
   { emoji: "💪", label: "Muscle" },
   { emoji: "💯", label: "100" },
+  { emoji: "🚀", label: "Rocket" },
+  { emoji: "🎉", label: "Party popper" },
+  { emoji: "😂", label: "Laughing" },
 ];
 
 export default function Chat({ messages, activity = [], updateMessages, newAfter, mention, onMentioned, items, participants, me, call, onError, shown, head, error }) {
