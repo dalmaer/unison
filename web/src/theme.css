@@ -1735,6 +1735,11 @@ a.ws-mark:hover {
   font-variant-numeric: tabular-nums;
 }
 
+.row .item-id {
+  min-width: 34px;
+  flex-shrink: 0;
+}
+
 .chip {
   padding: 0 6px;
   border-radius: var(--radius-full);
@@ -1823,9 +1828,20 @@ button.group-head {
 
 .meta,
 .item-reporter {
+  flex: none;
   color: var(--text-muted);
   font-size: var(--size-xs);
   white-space: nowrap;
+}
+
+.row .chip,
+.row .comment-count {
+  flex: none;
+}
+
+.row-close-note {
+  font-weight: var(--weight-ui-regular);
+  color: var(--text-muted);
 }
 
 .row-actions {

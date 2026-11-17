@@ -243,16 +243,33 @@ function BacklogRow({ item, list, highlight, participants, me, repos, run, reord
         <RecurringMarker item={item} />
         <button type="button" className="row-title" aria-haspopup="dialog">
           {item.title}
+          {!queued && item.close_note && <span className="row-close-note"> — {item.close_note}</span>}
         </button>
-        <PRChips prs={item.prs} repos={repos} />
-        {item.comment_count > 0 && (
-          <span className="comment-count" title={`${item.comment_count} comment${item.comment_count === 1 ? "" : "s"}`}>
-            <MessageSquare aria-hidden="true" />
-            {item.comment_count}
-          </span>
+        {queued ? (
+          <>
+            <PRChips prs={item.prs} repos={repos} />
+            {item.comment_count > 0 && (
+              <span className="comment-count" title={`${item.comment_count} comment${item.comment_count === 1 ? "" : "s"}`}>
+                <MessageSquare aria-hidden="true" />
+                {item.comment_count}
+              </span>
+            )}
+            <span className="item-reporter">by {name(participants, item.created_by)}</span>
+            {item.assignee_id && <span className="chip">{name(participants, item.assignee_id)}</span>}
+          </>
+        ) : (
+          <>
+            <span className="item-reporter">by {name(participants, item.created_by)}</span>
+            {item.assignee_id && <span className="chip">{name(participants, item.assignee_id)}</span>}
+            {item.comment_count > 0 && (
+              <span className="comment-count" title={`${item.comment_count} comment${item.comment_count === 1 ? "" : "s"}`}>
+                <MessageSquare aria-hidden="true" />
+                {item.comment_count}
+              </span>
+            )}
+            <PRChips prs={item.prs} repos={repos} />
+          </>
         )}
-        <span className="item-reporter">by {name(participants, item.created_by)}</span>
-        {item.assignee_id && <span className="chip">{name(participants, item.assignee_id)}</span>}
         <span className="meta">{meta(item)}</span>
         {canStart && (
           <span className="row-actions" onClick={(e) => e.stopPropagation()}>
