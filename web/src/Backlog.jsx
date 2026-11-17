@@ -4,6 +4,7 @@ import { ItemDialog, NewItemDialog } from "./BacklogItemDialog.jsx";
 import { meta, name, prLabel } from "./backlogFormat.js";
 import Kanban from "./Kanban.jsx";
 import { OPEN_ITEM } from "./nav.js";
+import { useKeyShortcut } from "./shortcuts.jsx";
 import { RecurringMarker } from "./Recurring.jsx";
 import Button from "./ui/Button.jsx";
 import ScreenHead from "./ui/ScreenHead.jsx";
@@ -19,6 +20,10 @@ export default function Backlog({ items, participants, me, workspace, call, onEr
   const [view, setView] = useBacklogView();
   const [showDone, setShowDone] = useState(false);
   const [creating, setCreating] = useState(false);
+  useKeyShortcut(
+    (e) => !e.shiftKey && (e.key === "c" || e.key === "C"),
+    () => setCreating(true),
+  );
   const [created, setCreated] = useState(null); // The item just added: scrolled to and highlighted.
   // Items you added that aren't in the list yet (#128): shown at once, at the
   // bottom of Open, until the server's copy arrives (realId) or the call fails.

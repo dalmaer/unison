@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Play, Plus, Repeat, Trash2 } from "lucide-react";
 import { submitOnModEnter } from "./backlogFormat.js";
 import { itemLink } from "./nav.js";
+import { useKeyShortcut } from "./shortcuts.jsx";
 import Button from "./ui/Button.jsx";
 import Dialog from "./ui/Dialog.jsx";
 import Field from "./ui/Field.jsx";
@@ -61,6 +62,10 @@ export function RecurringMarker({ item }) {
 
 export default function Recurring({ schedules, setSchedules, call, onError, head, error }) {
   const [editing, setEditing] = useState(null); // A schedule id, or "new".
+  useKeyShortcut(
+    (e) => !e.shiftKey && (e.key === "c" || e.key === "C"),
+    () => setEditing("new"),
+  );
   const [ran, setRan] = useState(null); // Last Run now result: { item, added }.
   // Schedules you added that the server hasn't confirmed yet (#144): shown at
   // once, at the bottom, until the response arrives or the call fails.
