@@ -130,7 +130,7 @@ export default function Landing({ account, children }) {
             your agents use to claim work, report progress and wait for the next mention.
           </p>
           {account.ready && <SignInButtons providers={account.providers} />}
-          <WorkspaceStats />
+          {account.user && <WorkspaceStats />}
         </section>
         <figure className="hero-shot">
           <img
