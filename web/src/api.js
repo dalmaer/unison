@@ -12,15 +12,37 @@ export function setToken(ws, token) {
   else localStorage.removeItem(tokenKey(ws));
 }
 
+let pageUnloading = false;
+if (typeof window !== "undefined") {
+  window.addEventListener("beforeunload", () => {
+    pageUnloading = true;
+  });
+  window.addEventListener("pagehide", () => {
+    pageUnloading = true;
+  });
+  window.addEventListener("pageshow", () => {
+    pageUnloading = false;
+  });
+}
+
+export class PageUnloadingError extends Error {
+  constructor() {
+    super("page unloading");
+    this.name = "PageUnloadingError";
+  }
+}
+
 export class ApiError extends Error {
   // code is the server's machine-readable reason, when it gives one (e.g.
-  // "sign_in", "legacy", "not_member", "join_first").
+  // "sign_in", "legacy", "not_member", "join_first", "session_expired").
   constructor(status, message, code = "") {
     super(message);
     this.status = status;
     this.code = code;
   }
 }
+
+const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 
 export async function api(method, path, { body, token } = {}) {
   const headers = {};
@@ -29,11 +51,32 @@ export async function api(method, path, { body, token } = {}) {
   // Cookie-authenticated writes must carry this header (CSRF protection: a
   // foreign page cannot add it without a CORS preflight, which we refuse).
   if (method !== "GET" && method !== "HEAD") headers["X-Unison-CSRF"] = "1";
-  const resp = await fetch(path, {
+  const opts = {
     method,
     headers,
+    redirect: "manual",
     body: body === undefined ? undefined : JSON.stringify(body),
-  });
+  };
+  let resp;
+  try {
+    resp = await fetch(path, opts);
+  } catch (err) {
+    if (pageUnloading) throw new PageUnloadingError();
+    if ((method === "GET" || method === "HEAD") && err?.name !== "AbortError") {
+      await delay(150);
+      try {
+        resp = await fetch(path, opts);
+      } catch (retryErr) {
+        if (pageUnloading) throw new PageUnloadingError();
+        throw retryErr;
+      }
+    } else {
+      throw err;
+    }
+  }
+  if (resp.type === "opaqueredirect" || (resp.status >= 300 && resp.status < 400)) {
+    throw new ApiError(401, "Your session expired. Reload the page to sign in again.", "session_expired");
+  }
   const data = await resp.json().catch(() => ({}));
   if (!resp.ok) throw new ApiError(resp.status, data.error || resp.statusText, data.code);
   return data;
