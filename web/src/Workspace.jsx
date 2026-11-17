@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowUpRight, Bot, ChevronDown, FolderGit2, Globe, KeyRound, LayoutGrid, Link2, ListTodo, MessageCircle, Pencil, Plus, RefreshCw, Repeat, Settings, UserPlus } from "lucide-react";
+import { ArrowUpRight, Bot, ChevronDown, FolderGit2, Globe, Keyboard, KeyRound, LayoutGrid, Link2, ListTodo, MessageCircle, Pencil, Plus, RefreshCw, Repeat, Settings, UserPlus } from "lucide-react";
 import { ApiError, getToken, setToken, workspaceApi } from "./api.js";
 import { AccountMenu } from "./Account.jsx";
 import { markSeen } from "./activity.js";
@@ -25,6 +25,7 @@ import { Input, Textarea } from "./ui/Input.jsx";
 import ThemeSwitch from "./ui/ThemeSwitch.jsx";
 import WorkspaceSwitcher from "./WorkspaceSwitcher.jsx";
 import { ImageUpload, imageUploader } from "./images.jsx";
+import { ShortcutsDialog, isEditableTarget, shouldIgnoreShortcut } from "./shortcuts.jsx";
 
 const ACTIVE_WINDOW_MS = 2 * 60 * 1000;
 const DORMANT_WINDOW_MS = 15 * 60 * 1000;
@@ -169,7 +170,33 @@ export default function Workspace({ id, view, navigate, account }) {
   const [mention, setMention] = useState(null); // A name to start a chat message with.
   const [error, setError] = useState("");
   const [editingMe, setEditingMe] = useState(false); // MeDialog is open
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const joined = Boolean(me);
+
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === "?" && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && !e.isComposing && e.keyCode !== 229 && !isEditableTarget(e.target)) {
+        if (shortcutsOpen) {
+          e.preventDefault();
+          setShortcutsOpen(false);
+          return;
+        }
+        if (!shouldIgnoreShortcut(e)) {
+          e.preventDefault();
+          setShortcutsOpen(true);
+        }
+        return;
+      }
+      if (!joined || e.shiftKey || shouldIgnoreShortcut(e)) return;
+      const screen = SCREENS.find((s) => s.key === e.key);
+      if (screen) {
+        e.preventDefault();
+        screens.show(screen.id);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [joined, shortcutsOpen]);
   const notify = useNotifier(me, participants, view);
   const reviews = usePendingReviews(call, joined ? workspace : null);
 
@@ -294,7 +321,7 @@ export default function Workspace({ id, view, navigate, account }) {
   const counts = { backlog: backlog.filter((it) => it.status !== "done").length, recurring: schedules.length, chat: unread, actions: me?.open_actions || 0 };
   // The screen header's controls on phones: Invite and the account menu.
   const headExtras = (
-    <HeadExtras workspace={workspace} call={call} account={account} members={members} settingsLink={screens.link("settings")} />
+    <HeadExtras workspace={workspace} call={call} account={account} members={members} settingsLink={screens.link("settings")} onOpenShortcuts={() => setShortcutsOpen(true)} />
   );
   const errorBar = error && (
     <p role="alert" className="error-bar">
@@ -316,6 +343,7 @@ export default function Workspace({ id, view, navigate, account }) {
         counts={counts}
         screens={screens}
         account={account}
+        onOpenShortcuts={() => setShortcutsOpen(true)}
         navigate={navigate}
         participants={roster(participants, me)}
         reviews={reviews}
@@ -348,6 +376,7 @@ export default function Workspace({ id, view, navigate, account }) {
           onClose={() => setEditingMe(false)}
         />
       )}
+      {shortcutsOpen && <ShortcutsDialog onClose={() => setShortcutsOpen(false)} />}
       {view === "settings" && joined ? (
         <main className="shell-main panel">
           <SettingsPage
@@ -357,6 +386,7 @@ export default function Workspace({ id, view, navigate, account }) {
             participants={participants}
             webhooks={webhooks}
             account={account}
+        onOpenShortcuts={() => setShortcutsOpen(true)}
             call={call}
             error={errorBar}
             onError={setError}
@@ -519,9 +549,9 @@ function useShownMessage(show) {
 }
 
 const SCREENS = [
-  { id: "backlog", label: "Backlog", Icon: ListTodo },
-  { id: "recurring", label: "Recurring", Icon: Repeat },
-  { id: "chat", label: "Chat", Icon: MessageCircle },
+  { id: "backlog", label: "Backlog", Icon: ListTodo, key: "1" },
+  { id: "recurring", label: "Recurring", Icon: Repeat, key: "2" },
+  { id: "chat", label: "Chat", Icon: MessageCircle, key: "3" },
 ];
 
 // The count beside a screen's name: the open backlog as a number; for chat,
@@ -576,7 +606,7 @@ function SectionHeading({ title, count, open, onToggle, ariaControls }) {
 // here (humans and agents, each with Invite), pull requests pending review (with a GitHub
 // token, #127), links out (product, canvas, repositories, custom links #299),
 // then settings and your account at the bottom.
-function Sidebar({ workspace, view, joined, live, counts, screens, account, navigate, participants, people, reviews, call }) {
+function Sidebar({ workspace, view, joined, live, counts, screens, account, onOpenShortcuts, navigate, participants, people, reviews, call }) {
   const repos = workspace.repos || [];
   const links = workspace.links || [];
   const [editingLink, setEditingLink] = useState(null); // A link, or "new".
@@ -621,9 +651,9 @@ function Sidebar({ workspace, view, joined, live, counts, screens, account, navi
       <div className="sidebar-content">
         {joined && (
           <ul className="nav-list" aria-label="Screens">
-            {SCREENS.map(({ id, label, Icon }) => (
+            {SCREENS.map(({ id, label, Icon, key }) => (
               <li key={id}>
-                <a className="nav-link" {...screens.link(id)}>
+                <a className="nav-link" aria-keyshortcuts={key} title={`${label} (${key})`} {...screens.link(id)}>
                   <Icon aria-hidden="true" />
                   {label}
                   <ScreenCount screen={id} counts={counts} />
@@ -735,7 +765,7 @@ function Sidebar({ workspace, view, joined, live, counts, screens, account, navi
           </a>
         )}
         <div className="sidebar-foot-row">
-          {account.user && <AccountMenu account={account} showName menuExtra={() => <AccountMenuExtra />} />}
+          {account.user && <AccountMenu account={account} showName menuExtra={(close) => <AccountMenuExtra close={close} onOpenShortcuts={onOpenShortcuts} />} />}
           <ThemeSwitch />
         </div>
       </div>
@@ -747,8 +777,8 @@ function Sidebar({ workspace, view, joined, live, counts, screens, account, navi
 function TabBar({ view, counts, screens }) {
   return (
     <nav className="tabbar" aria-label="Screens">
-      {SCREENS.map(({ id, label, Icon }) => (
-        <a key={id} className="tab" {...screens.link(id)}>
+      {SCREENS.map(({ id, label, Icon, key }) => (
+        <a key={id} className="tab" aria-keyshortcuts={key} title={`${label} (${key})`} {...screens.link(id)}>
           <span className="tab-icon">
             <Icon aria-hidden="true" />
             <ScreenCount screen={id} counts={counts} />
@@ -762,8 +792,23 @@ function TabBar({ view, counts, screens }) {
 
 // AccountMenuExtra is what the account menu adds in a workspace. The theme
 // isn't here: the sidebar (and the header on phones) has the switch (#131).
-function AccountMenuExtra() {
-  return notifySupported && <NotifyRow />;
+function AccountMenuExtra({ close, onOpenShortcuts }) {
+  return (
+    <>
+      {notifySupported && <NotifyRow />}
+      <button
+        type="button"
+        className="button button-secondary"
+        onClick={() => {
+          close?.();
+          onOpenShortcuts?.();
+        }}
+      >
+        <Keyboard aria-hidden="true" />
+        Keyboard shortcuts
+      </button>
+    </>
+  );
 }
 
 // NotifyRow turns desktop notifications on or off (see notify.js).
@@ -818,7 +863,7 @@ function InviteButton({ kind, workspace, account, members, call, className }) {
 
 // HeadExtras: on phones (no sidebar), Invite and the account menu at the
 // right of each screen's header; the menu also holds settings.
-function HeadExtras({ workspace, call, account, members, settingsLink }) {
+function HeadExtras({ workspace, call, account, members, settingsLink, onOpenShortcuts }) {
   return (
     <>
       <span className="head-account">
@@ -830,7 +875,7 @@ function HeadExtras({ workspace, call, account, members, settingsLink }) {
             account={account}
             menuExtra={(close) => (
               <>
-                <AccountMenuExtra />
+                <AccountMenuExtra close={close} onOpenShortcuts={onOpenShortcuts} />
                 <a className="button button-secondary" href={settingsLink.href} onClick={(e) => {
                     close();
                     settingsLink.onClick(e);
