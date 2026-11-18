@@ -56,3 +56,24 @@ func TestCountEventType(t *testing.T) {
 		t.Fatalf("countEventType(nil) = %d, want 0", got)
 	}
 }
+
+func TestFormatRequestRouteAndStreamingExclusions(t *testing.T) {
+	if got := formatRequestRoute("GET", "GET /download/unison", "/download/unison"); got != "GET /download/unison" {
+		t.Fatalf("formatRequestRoute with method prefix = %q, want %q", got, "GET /download/unison")
+	}
+	if got := formatRequestRoute("GET", "/api/workspaces/{ws}/", "/api/workspaces/ws_1/"); got != "GET /api/workspaces/{ws}/" {
+		t.Fatalf("formatRequestRoute without method prefix = %q, want %q", got, "GET /api/workspaces/{ws}/")
+	}
+	if got := formatRequestRoute("POST", "", "/fallback"); got != "POST /fallback" {
+		t.Fatalf("formatRequestRoute empty pattern = %q, want %q", got, "POST /fallback")
+	}
+
+	for _, p := range []string{"/api/workspaces/ws_1/events", "/api/workspaces/ws_1/stream", "/download/unison"} {
+		if !isStreamingOrLongPoll(p) {
+			t.Fatalf("expected %q to be excluded from slow-request warnings", p)
+		}
+	}
+	if isStreamingOrLongPoll("/api/workspaces/ws_1/messages") {
+		t.Fatal("ordinary route must not be excluded from slow-request warnings")
+	}
+}

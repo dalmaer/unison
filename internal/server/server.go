@@ -137,6 +137,21 @@ func (r *statusRecorder) Flush() {
 
 func (r *statusRecorder) Unwrap() http.ResponseWriter { return r.ResponseWriter }
 
+func formatRequestRoute(method, pattern, path string) string {
+	route := pattern
+	if route == "" {
+		route = path
+	}
+	if strings.HasPrefix(route, method+" ") {
+		return route
+	}
+	return method + " " + route
+}
+
+func isStreamingOrLongPoll(path string) bool {
+	return strings.HasSuffix(path, "/events") || strings.HasSuffix(path, "/stream") || path == "/download/unison"
+}
+
 // ServeHTTP implements http.Handler.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if isStampedVersion(s.version) && strings.HasPrefix(r.URL.Path, "/api/") {
@@ -146,15 +161,11 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	rw := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 	s.mux.ServeHTTP(rw, r)
 	dur := time.Since(start)
-	route := r.Pattern
-	if route == "" {
-		route = r.URL.Path
-	}
-	longPoll := strings.HasSuffix(r.URL.Path, "/events") || strings.HasSuffix(r.URL.Path, "/stream")
+	route := formatRequestRoute(r.Method, r.Pattern, r.URL.Path)
 	if rw.status >= 500 {
-		log.Printf("WARN %s %s status=%d dur=%s", r.Method, route, rw.status, dur.Round(time.Millisecond))
-	} else if !longPoll && dur > slowRequestThreshold {
-		log.Printf("WARN slow %s %s status=%d dur=%s", r.Method, route, rw.status, dur.Round(time.Millisecond))
+		log.Printf("WARN %s status=%d dur=%s", route, rw.status, dur.Round(time.Millisecond))
+	} else if !isStreamingOrLongPoll(r.URL.Path) && dur > slowRequestThreshold {
+		log.Printf("WARN slow %s status=%d dur=%s", route, rw.status, dur.Round(time.Millisecond))
 	}
 }
 

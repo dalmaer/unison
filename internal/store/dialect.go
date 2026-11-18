@@ -5,8 +5,10 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
 	_ "github.com/jackc/pgx/v5/stdlib" // Registers the "pgx" database/sql driver.
@@ -106,6 +108,28 @@ func isUniqueViolation(err error) bool {
 	return strings.Contains(err.Error(), "UNIQUE")
 }
 
+// Cloud SQL's smallest tier (db-f1-micro) allows ~22 non-superuser connections;
+// capping each server process at 8 keeps overlapping Cloud Run revisions during
+// a rolling deploy within budget while database/sql queues bursts (#382).
+const defaultPostgresMaxOpenConns = 8
+
+func postgresMaxOpenConns() int {
+	if v := strings.TrimSpace(os.Getenv("UNISON_DB_MAX_CONNS")); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			return n
+		}
+	}
+	return defaultPostgresMaxOpenConns
+}
+
+func configurePostgresPool(conn *sql.DB) {
+	maxOpen := postgresMaxOpenConns()
+	conn.SetMaxOpenConns(maxOpen)
+	conn.SetMaxIdleConns(min(maxOpen, 4))
+	conn.SetConnMaxIdleTime(2 * time.Minute)
+	conn.SetConnMaxLifetime(30 * time.Minute)
+}
+
 // openDB opens the database for dsn and applies the schema.
 func openDB(dsn string) (db, error) {
 	if IsPostgresDSN(dsn) {
@@ -113,6 +137,7 @@ func openDB(dsn string) (db, error) {
 		if err != nil {
 			return db{}, err
 		}
+		configurePostgresPool(conn)
 		d := db{DB: conn, pg: true}
 		// Lock while creating the schema so overlapping instances during a
 		// rollout don't race on CREATE ... IF NOT EXISTS.
