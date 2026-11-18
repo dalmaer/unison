@@ -160,6 +160,7 @@ export default function Workspace({ id, view, navigate, account }) {
   const [participants, setParticipants] = useState([]);
   const [participantsLoaded, setParticipantsLoaded] = useState(false);
   const [now, setNow] = useState(() => Date.now());
+  const sidebarParticipants = useMemo(() => roster(participants, now), [participants, now]);
   const [messages, setMessages] = useState([]);
   const [hasMoreMessages, setHasMoreMessages] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
@@ -456,7 +457,6 @@ export default function Workspace({ id, view, navigate, account }) {
   if (!workspace) return <main className="page">{error ? <p role="alert">Error: {error}</p> : <p>Loading…</p>}</main>;
 
   const counts = { backlog: backlog.filter((it) => it.status !== "done").length, recurring: schedules.length, chat: unread, actions: me?.open_actions || 0 };
-  const sidebarParticipants = useMemo(() => roster(participants, now), [participants, now]);
   const emptyAgents = participantsLoaded && !sidebarParticipants.some(KINDS.agents);
   // The screen header's controls on phones: Invite and the account menu.
   const headExtras = (
